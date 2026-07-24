@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: primex_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-docentesmart}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smart2026}
+      POSTGRES_DB: ${DB_NAME:-primex}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - primex_network
+
+networks:
+  primex_network:
+    driver: bridge
+
+volumes:
+  pgdata:

@@ -1,0 +1,19 @@
+# Entornos y Secretos (¡NUNCA SUBIR EL .env!)
+.env
+
+# Binarios generados por Go
+/bin/
+/tmp/
+*.exe
+main
+
+# Archivos de datos de Docker / PostgreSQL local
+pgdata/
+postgres-data/
+*.dump
+*.gz
+
+# Carpetas de editores de código y SO
+.vscode/
+.idea/
+.DS_Store
