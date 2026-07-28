@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
+	"log"
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 	"github.com/go-chi/chi/v5"
@@ -61,6 +61,9 @@ func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) 
 		TotalPreguntas: examen.TotalPreguntas,
 	})
 	if err != nil {
+		// 🔴 AQUÍ ES DONDE IMPRIMIMOS EL ERROR REAL
+		log.Printf("❌ ERROR REAL AL INICIAR INTENTO EN BD: %v", err)
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al iniciar el intento"})
