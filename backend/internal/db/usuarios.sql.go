@@ -54,6 +54,43 @@ func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (Cre
 	return i, err
 }
 
+const getOrCreateUserByEmail = `-- name: GetOrCreateUserByEmail :one
+INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol)
+VALUES ($1, 'OAUTH_GOOGLE_PLACEHOLDER', $2, 'usuario')
+ON CONFLICT (correo) DO UPDATE 
+SET nombre_completo = CASE 
+    WHEN usuarios.nombre_completo = '' OR usuarios.nombre_completo IS NULL 
+    THEN EXCLUDED.nombre_completo 
+    ELSE usuarios.nombre_completo 
+END
+RETURNING id, correo, rol, nombre_completo
+`
+
+type GetOrCreateUserByEmailParams struct {
+	Correo         string `json:"correo"`
+	NombreCompleto string `json:"nombre_completo"`
+}
+
+type GetOrCreateUserByEmailRow struct {
+	ID             pgtype.UUID `json:"id"`
+	Correo         string      `json:"correo"`
+	Rol            pgtype.Text `json:"rol"`
+	NombreCompleto string      `json:"nombre_completo"`
+}
+
+// Si ya existe, opcionalmente actualizamos su nombre si estaba vacío, o simplemente lo dejamos intacto
+func (q *Queries) GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUserByEmailParams) (GetOrCreateUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, getOrCreateUserByEmail, arg.Correo, arg.NombreCompleto)
+	var i GetOrCreateUserByEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.Correo,
+		&i.Rol,
+		&i.NombreCompleto,
+	)
+	return i, err
+}
+
 const obtenerUsuarioPorCorreo = `-- name: ObtenerUsuarioPorCorreo :one
 SELECT id, correo, contrasena_hash, nombre_completo, rol, suscripcion_hasta, creado_en, actualizado_en FROM usuarios WHERE correo = $1 LIMIT 1
 `

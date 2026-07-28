@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
-	"github.com/alienwarecode/docent-primex-api/internal/handler"
 	"github.com/alienwarecode/docent-primex-api/internal/router"
 )
 
@@ -56,11 +56,12 @@ func main() {
 
 	fmt.Println("==================================================")
 	fmt.Println("🚀 Conexión exitosa a PostgreSQL (primex_db)!")
-	
-	// Inicializar Handlers y Router
+
+	// 1. Instanciar consultas de sqlc
 	queries := db.New(dbPool)
-	h := handler.NewHandler(queries)
-	appRouter := router.NewRouter(h)
+
+	// 2. Crear Router pasando las consultas y el middleware de JWT
+	appRouter := router.NewRouter(queries, auth.JWTMiddleware)
 
 	server := &http.Server{
 		Addr:         ":" + port,

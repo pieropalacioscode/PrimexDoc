@@ -5,8 +5,97 @@
 package db
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type EstadoSuscripcion string
+
+const (
+	EstadoSuscripcionActiva    EstadoSuscripcion = "activa"
+	EstadoSuscripcionVencida   EstadoSuscripcion = "vencida"
+	EstadoSuscripcionCancelada EstadoSuscripcion = "cancelada"
+)
+
+func (e *EstadoSuscripcion) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EstadoSuscripcion(s)
+	case string:
+		*e = EstadoSuscripcion(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EstadoSuscripcion: %T", src)
+	}
+	return nil
+}
+
+type NullEstadoSuscripcion struct {
+	EstadoSuscripcion EstadoSuscripcion `json:"estado_suscripcion"`
+	Valid             bool              `json:"valid"` // Valid is true if EstadoSuscripcion is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEstadoSuscripcion) Scan(value interface{}) error {
+	if value == nil {
+		ns.EstadoSuscripcion, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EstadoSuscripcion.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEstadoSuscripcion) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EstadoSuscripcion), nil
+}
+
+type TipoPlan string
+
+const (
+	TipoPlanMensual   TipoPlan = "mensual"
+	TipoPlanSemestral TipoPlan = "semestral"
+	TipoPlanAnual     TipoPlan = "anual"
+)
+
+func (e *TipoPlan) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TipoPlan(s)
+	case string:
+		*e = TipoPlan(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TipoPlan: %T", src)
+	}
+	return nil
+}
+
+type NullTipoPlan struct {
+	TipoPlan TipoPlan `json:"tipo_plan"`
+	Valid    bool     `json:"valid"` // Valid is true if TipoPlan is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTipoPlan) Scan(value interface{}) error {
+	if value == nil {
+		ns.TipoPlan, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TipoPlan.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTipoPlan) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TipoPlan), nil
+}
 
 type Examene struct {
 	ID                pgtype.UUID        `json:"id"`
@@ -45,6 +134,20 @@ type IntentoRespuesta struct {
 	RespondidoEn         pgtype.Timestamptz `json:"respondido_en"`
 }
 
+type IntentosExaman struct {
+	ID                   pgtype.UUID        `json:"id"`
+	UsuarioID            pgtype.UUID        `json:"usuario_id"`
+	ExamenID             pgtype.UUID        `json:"examen_id"`
+	Modo                 string             `json:"modo"`
+	TotalPreguntas       int32              `json:"total_preguntas"`
+	PreguntasCorrectas   int32              `json:"preguntas_correctas"`
+	PreguntasIncorrectas int32              `json:"preguntas_incorrectas"`
+	Puntaje              pgtype.Numeric     `json:"puntaje"`
+	Estado               string             `json:"estado"`
+	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
+	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+}
+
 type Opcione struct {
 	ID          pgtype.UUID `json:"id"`
 	PreguntaID  pgtype.UUID `json:"pregunta_id"`
@@ -54,13 +157,46 @@ type Opcione struct {
 }
 
 type Pregunta struct {
-	ID             pgtype.UUID        `json:"id"`
-	ExamenID       pgtype.UUID        `json:"examen_id"`
-	NumeroPregunta int32              `json:"numero_pregunta"`
-	TextoPregunta  string             `json:"texto_pregunta"`
-	UrlImagen      pgtype.Text        `json:"url_imagen"`
-	Explicacion    pgtype.Text        `json:"explicacion"`
-	CreadoEn       pgtype.Timestamptz `json:"creado_en"`
+	ID               pgtype.UUID        `json:"id"`
+	ExamenID         pgtype.UUID        `json:"examen_id"`
+	TextoBaseID      pgtype.UUID        `json:"texto_base_id"`
+	NumeroPregunta   int32              `json:"numero_pregunta"`
+	TextoPregunta    string             `json:"texto_pregunta"`
+	UrlImagen        pgtype.Text        `json:"url_imagen"`
+	Explicacion      pgtype.Text        `json:"explicacion"`
+	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+	OpcionCorrectaID pgtype.UUID        `json:"opcion_correcta_id"`
+}
+
+type RespuestasIntento struct {
+	ID                   pgtype.UUID        `json:"id"`
+	IntentoID            pgtype.UUID        `json:"intento_id"`
+	PreguntaID           pgtype.UUID        `json:"pregunta_id"`
+	OpcionSeleccionadaID pgtype.UUID        `json:"opcion_seleccionada_id"`
+	EsCorrecta           bool               `json:"es_correcta"`
+	CreadoEn             pgtype.Timestamptz `json:"creado_en"`
+}
+
+type Suscripcione struct {
+	ID              pgtype.UUID           `json:"id"`
+	UsuarioID       pgtype.UUID           `json:"usuario_id"`
+	Plan            TipoPlan              `json:"plan"`
+	Monto           pgtype.Numeric        `json:"monto"`
+	Estado          NullEstadoSuscripcion `json:"estado"`
+	MetodoPago      pgtype.Text           `json:"metodo_pago"`
+	NumeroOperacion pgtype.Text           `json:"numero_operacion"`
+	FechaInicio     pgtype.Timestamptz    `json:"fecha_inicio"`
+	FechaExpiracion pgtype.Timestamptz    `json:"fecha_expiracion"`
+	CreadoEn        pgtype.Timestamptz    `json:"creado_en"`
+}
+
+type TextosBase struct {
+	ID              pgtype.UUID        `json:"id"`
+	ExamenID        pgtype.UUID        `json:"examen_id"`
+	CodigoTextoBase string             `json:"codigo_texto_base"`
+	Titulo          pgtype.Text        `json:"titulo"`
+	Contenido       string             `json:"contenido"`
+	CreadoEn        pgtype.Timestamptz `json:"creado_en"`
 }
 
 type Usuario struct {

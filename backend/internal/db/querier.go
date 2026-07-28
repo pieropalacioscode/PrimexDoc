@@ -6,11 +6,30 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (ActivarSuscripcionRow, error)
+	CheckActiveSubscription(ctx context.Context, usuarioID pgtype.UUID) (bool, error)
 	CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error)
+	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
+	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
+	GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenByIDRow, error)
+	GetOpcionesByPreguntaIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Opcione, error)
+	// Si ya existe, opcionalmente actualizamos su nombre si estaba vacío, o simplemente lo dejamos intacto
+	GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUserByEmailParams) (GetOrCreateUserByEmailRow, error)
+	GetPreguntasByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetPreguntasByExamenIDRow, error)
+	GetRespuestasPorIntentoID(ctx context.Context, intentoID pgtype.UUID) ([]GetRespuestasPorIntentoIDRow, error)
+	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
+	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
+	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
+	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
+	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
+	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)
+	RegistrarRespuestaIntento(ctx context.Context, arg RegistrarRespuestaIntentoParams) error
 }
 
 var _ Querier = (*Queries)(nil)

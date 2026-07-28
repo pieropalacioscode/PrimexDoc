@@ -16,6 +16,15 @@ import (
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 )
 
+// Struct del Handler y Constructor para el Router
+type AuthHandler struct {
+	DB *db.Queries
+}
+
+func NewAuthHandler(queries *db.Queries) *AuthHandler {
+	return &AuthHandler{DB: queries}
+}
+
 // Estructuras de Petición / Respuesta (DTOs)
 type RegisterRequest struct {
 	Correo         string `json:"correo"`
@@ -65,14 +74,13 @@ func uuidToString(u pgtype.UUID) string {
 }
 
 // Registro de nuevos docentes
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "El cuerpo de la petición no es un JSON válido")
 		return
 	}
 
-	// Validaciones básicas de entrada
 	req.Correo = strings.ToLower(strings.TrimSpace(req.Correo))
 	req.NombreCompleto = strings.TrimSpace(req.NombreCompleto)
 
@@ -86,7 +94,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verificar si el usuario ya existe
 	_, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), req.Correo)
 	if err == nil {
 		respondWithError(w, http.StatusConflict, "El correo electrónico ya está registrado")
@@ -96,14 +103,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hash de contraseña con Bcrypt
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Contrasena), 12)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error al procesar la seguridad de la contraseña")
 		return
 	}
 
-	// Parámetros para sqlc
 	var rolText pgtype.Text
 	_ = rolText.Scan("usuario")
 
@@ -118,14 +123,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Conversiones seguras
 	userIDStr := uuidToString(nuevoUsuario.ID)
 	rolStr := "usuario"
 	if nuevoUsuario.Rol.Valid && nuevoUsuario.Rol.String != "" {
 		rolStr = nuevoUsuario.Rol.String
 	}
 
-	// Generar Token JWT
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = "secret_fallback_dev"
@@ -149,7 +152,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // Login de docentes
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "El cuerpo de la petición no es un JSON válido")
@@ -163,7 +166,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Buscar usuario en la BD
 	usuario, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), req.Correo)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -174,13 +176,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validar hash de contraseña
 	if err := bcrypt.CompareHashAndPassword([]byte(usuario.ContrasenaHash), []byte(req.Contrasena)); err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Credenciales incorrectas")
 		return
 	}
 
-	// Conversiones seguras
 	userIDStr := uuidToString(usuario.ID)
 	rolStr := "usuario"
 	if usuario.Rol.Valid && usuario.Rol.String != "" {

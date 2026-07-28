@@ -1,19 +1,23 @@
-# Entornos y Secretos (¡NUNCA SUBIR EL .env!)
+cat << 'EOF' > .gitignore
+# Variables de entorno (¡Crítico no subir contraseñas!)
 .env
+.env.local
+.env.*
 
-# Binarios generados por Go
-/bin/
-/tmp/
-*.exe
-main
+# Frontend (Node.js / Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+npm-debug.log*
 
-# Archivos de datos de Docker / PostgreSQL local
-pgdata/
-postgres-data/
-*.dump
-*.gz
+# Backend (Go / Binarios compilados)
+backend/primexdoc-api
+backend/*.exe
+backend/*.out
+backend/bin/
 
-# Carpetas de editores de código y SO
-.vscode/
-.idea/
+# Archivos del sistema operativo
 .DS_Store
+Thumbs.db
+EOF

@@ -27,13 +27,25 @@ CREATE TABLE examenes (
     activo BOOLEAN DEFAULT TRUE,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Índice para búsquedas rápidas en el dashboard del docente
 CREATE INDEX idx_examenes_filtro ON examenes(nivel, tipo, anio);
 
--- 3. Tabla de Preguntas del Examen
+-- 3. Tabla de Textos Base / Casos Pedagógicos Compartidos
+CREATE TABLE textos_base (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
+    codigo_texto_base VARCHAR(50) NOT NULL,
+    titulo VARCHAR(255),
+    contenido TEXT NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
+);
+CREATE INDEX idx_textos_base_examen ON textos_base(examen_id);
+
+-- 4. Tabla de Preguntas del Examen
 CREATE TABLE preguntas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     examen_id UUID REFERENCES examenes(id) ON DELETE CASCADE,
+    texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL, -- FK a la lectura compartida
     numero_pregunta INT NOT NULL,
     texto_pregunta TEXT NOT NULL,
     url_imagen TEXT, -- Cloudflare R2
@@ -42,19 +54,20 @@ CREATE TABLE preguntas (
     CONSTRAINT unique_pregunta_por_examen UNIQUE (examen_id, numero_pregunta)
 );
 CREATE INDEX idx_preguntas_examen ON preguntas(examen_id);
+CREATE INDEX idx_preguntas_texto_base ON preguntas(texto_base_id);
 
--- 4. Tabla de Opciones / Alternativas
+-- 5. Tabla de Opciones / Alternativas
 CREATE TABLE opciones (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     pregunta_id UUID REFERENCES preguntas(id) ON DELETE CASCADE,
     etiqueta VARCHAR(10) NOT NULL,
     texto_opcion TEXT NOT NULL,
     es_correcta BOOLEAN NOT NULL DEFAULT FALSE,
-    CONSTRAINT unique_etiqueta_por_pregunta UNIQUE (pregunta_id, etiqueta) -- Evita duplicar 'A', 'B', etc.
+    CONSTRAINT unique_etiqueta_por_pregunta UNIQUE (pregunta_id, etiqueta)
 );
 CREATE INDEX idx_opciones_pregunta ON opciones(pregunta_id);
 
--- 5. Tabla de Intentos (Historial)
+-- 6. Tabla de Intentos (Historial)
 CREATE TABLE intentos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     usuario_id UUID REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -68,10 +81,9 @@ CREATE TABLE intentos (
     iniciado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     finalizado_en TIMESTAMP WITH TIME ZONE
 );
--- Índice crítico para cargar el panel del usuario rápidamente
 CREATE INDEX idx_intentos_usuario_estado ON intentos(usuario_id, estado);
 
--- 6. Tabla de Respuestas por Intento
+-- 7. Tabla de Respuestas por Intento
 CREATE TABLE intento_respuestas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     intento_id UUID REFERENCES intentos(id) ON DELETE CASCADE,
