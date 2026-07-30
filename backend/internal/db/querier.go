@@ -27,6 +27,8 @@ type Querier interface {
 	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
+	// Consulta para ver la retroalimentación pregunta por pregunta en los resultados
+	ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error)
 	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)
 	RegistrarRespuestaIntento(ctx context.Context, arg RegistrarRespuestaIntentoParams) error

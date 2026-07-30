@@ -241,6 +241,61 @@ func (q *Queries) ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype
 	return items, nil
 }
 
+const obtenerDetalleResultado = `-- name: ObtenerDetalleResultado :many
+SELECT 
+    p.id AS pregunta_id,
+    p.numero_pregunta,
+    p.texto_pregunta AS enunciado, -- 👈 EL ALIAS CONVIERTE EL NOMBRE PARA EL FRONTEND
+    p.explicacion,
+    ri.opcion_seleccionada_id,
+    o_correcta.id AS opcion_correcta_id,
+    ri.es_correcta
+FROM respuestas_intento ri
+JOIN preguntas p ON ri.pregunta_id = p.id
+LEFT JOIN opciones o_correcta ON o_correcta.pregunta_id = p.id AND o_correcta.es_correcta = TRUE
+WHERE ri.intento_id = $1
+ORDER BY p.numero_pregunta ASC
+`
+
+type ObtenerDetalleResultadoRow struct {
+	PreguntaID           pgtype.UUID `json:"pregunta_id"`
+	NumeroPregunta       int32       `json:"numero_pregunta"`
+	Enunciado            string      `json:"enunciado"`
+	Explicacion          pgtype.Text `json:"explicacion"`
+	OpcionSeleccionadaID pgtype.UUID `json:"opcion_seleccionada_id"`
+	OpcionCorrectaID     pgtype.UUID `json:"opcion_correcta_id"`
+	EsCorrecta           bool        `json:"es_correcta"`
+}
+
+// Consulta para ver la retroalimentación pregunta por pregunta en los resultados
+func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error) {
+	rows, err := q.db.Query(ctx, obtenerDetalleResultado, intentoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ObtenerDetalleResultadoRow{}
+	for rows.Next() {
+		var i ObtenerDetalleResultadoRow
+		if err := rows.Scan(
+			&i.PreguntaID,
+			&i.NumeroPregunta,
+			&i.Enunciado,
+			&i.Explicacion,
+			&i.OpcionSeleccionadaID,
+			&i.OpcionCorrectaID,
+			&i.EsCorrecta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const obtenerIntentoPorID = `-- name: ObtenerIntentoPorID :one
 SELECT 
     i.id,

@@ -3,8 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"log"
+	"net/http"
+
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 	"github.com/go-chi/chi/v5"
@@ -20,27 +21,43 @@ func NewIntentoHandler(queries *db.Queries) *IntentoHandler {
 	return &IntentoHandler{queries: queries}
 }
 
+// ==========================================
+// 💡 HELPERS AUXILIARES DE RESPUESTA JSON
+// ==========================================
+
+func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func respondError(w http.ResponseWriter, status int, message string) {
+	respondJSON(w, status, map[string]string{"error": message})
+}
+
+// ==========================================
+// 🎯 HANDLERS DE INTENTOS
+// ==========================================
+
 // POST /api/v1/intentos
 func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	userIDStr, ok := auth.GetUserID(ctx)
 	if !ok || userIDStr == "" {
-		http.Error(w, `{"error":"Usuario no autenticado"}`, http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
 		return
 	}
 
 	usuarioUUID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		http.Error(w, `{"error":"ID de usuario inválido"}`, http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
 		return
 	}
 
 	var req IniciarIntentoRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Cuerpo de petición inválido"})
+		respondError(w, http.StatusBadRequest, "Cuerpo de petición inválido")
 		return
 	}
 
@@ -48,9 +65,7 @@ func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) 
 
 	examen, err := h.queries.GetExamenByID(ctx, pgExamenID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Examen no encontrado"})
+		respondError(w, http.StatusNotFound, "Examen no encontrado")
 		return
 	}
 
@@ -61,12 +76,8 @@ func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) 
 		TotalPreguntas: examen.TotalPreguntas,
 	})
 	if err != nil {
-		// 🔴 AQUÍ ES DONDE IMPRIMIMOS EL ERROR REAL
 		log.Printf("❌ ERROR REAL AL INICIAR INTENTO EN BD: %v", err)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al iniciar el intento"})
+		respondError(w, http.StatusInternalServerError, "Error al iniciar el intento")
 		return
 	}
 
@@ -82,9 +93,7 @@ func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) 
 		IniciadoEn:     intentoDB.IniciadoEn.Time,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(resumen)
+	respondJSON(w, http.StatusCreated, resumen)
 }
 
 // POST /api/v1/intentos/{id}/finalizar
@@ -94,12 +103,12 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	// 1. Extraer ID de usuario del contexto autenticado
 	userIDStr, ok := auth.GetUserID(ctx)
 	if !ok || userIDStr == "" {
-		http.Error(w, `{"error":"Usuario no autenticado"}`, http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
 		return
 	}
 	usuarioID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		http.Error(w, `{"error":"ID de usuario inválido"}`, http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
 		return
 	}
 	pgUsuarioID := pgtype.UUID{Bytes: usuarioID, Valid: true}
@@ -108,16 +117,14 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	intentoIDStr := chi.URLParam(r, "id")
 	intentoID, err := uuid.Parse(intentoIDStr)
 	if err != nil {
-		http.Error(w, `{"error":"ID de intento inválido"}`, http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "ID de intento inválido")
 		return
 	}
 	pgIntentoID := pgtype.UUID{Bytes: intentoID, Valid: true}
 
 	var req FinalizarIntentoRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Petición inválida"})
+		respondError(w, http.StatusBadRequest, "Petición inválida")
 		return
 	}
 
@@ -126,17 +133,13 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 		UsuarioID: pgUsuarioID,
 	})
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Intento no encontrado o no pertenece al usuario"})
+		respondError(w, http.StatusNotFound, "Intento no encontrado o no pertenece al usuario")
 		return
 	}
 
 	clavesDB, err := h.queries.GetClavesYExplicacionesByExamenID(ctx, intentoDB.ExamenID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al consultar la clave de respuestas"})
+		respondError(w, http.StatusInternalServerError, "Error al consultar la clave de respuestas")
 		return
 	}
 
@@ -191,15 +194,11 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 		UsuarioID:            pgUsuarioID,
 	})
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al finalizar el intento"})
+		respondError(w, http.StatusInternalServerError, "Error al finalizar el intento")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"mensaje":               "Simulacro finalizado con éxito",
 		"puntaje":               puntaje,
 		"preguntas_correctas":   correctas,
@@ -211,31 +210,29 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 func (h *IntentoHandler) ListarIntentos(w http.ResponseWriter, r *http.Request) {
 	userIDStr, ok := auth.GetUserID(r.Context())
 	if !ok || userIDStr == "" {
-		http.Error(w, `{"error":"Usuario no autenticado"}`, http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
 		return
 	}
 
 	usuarioID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		http.Error(w, `{"error":"ID de usuario inválido"}`, http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
 		return
 	}
 	pgUsuarioID := pgtype.UUID{Bytes: usuarioID, Valid: true}
 
 	intentos, err := h.queries.ListarIntentosPorUsuario(r.Context(), pgUsuarioID)
 	if err != nil {
-		http.Error(w, `{"error":"Error al obtener historial de intentos"}`, http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "Error al obtener historial de intentos")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if intentos == nil {
-		// Responde [] en lugar de null sin depender del nombre exacto
-		// del tipo de fila que genera sqlc.
-		_, _ = w.Write([]byte("[]"))
+		respondJSON(w, http.StatusOK, []interface{}{})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(intentos)
+
+	respondJSON(w, http.StatusOK, intentos)
 }
 
 // GET /api/v1/intentos/{id}
@@ -244,12 +241,12 @@ func (h *IntentoHandler) ObtenerIntentoPorID(w http.ResponseWriter, r *http.Requ
 
 	userIDStr, ok := auth.GetUserID(ctx)
 	if !ok || userIDStr == "" {
-		http.Error(w, `{"error":"Usuario no autenticado"}`, http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
 		return
 	}
 	usuarioUUID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		http.Error(w, `{"error":"ID de usuario inválido"}`, http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
 		return
 	}
 	pgUsuarioID := pgtype.UUID{Bytes: usuarioUUID, Valid: true}
@@ -257,9 +254,7 @@ func (h *IntentoHandler) ObtenerIntentoPorID(w http.ResponseWriter, r *http.Requ
 	intentoIDStr := chi.URLParam(r, "id")
 	intentoUUID, err := uuid.Parse(intentoIDStr)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "ID de intento inválido"})
+		respondError(w, http.StatusBadRequest, "ID de intento inválido")
 		return
 	}
 	pgIntentoID := pgtype.UUID{Bytes: intentoUUID, Valid: true}
@@ -269,17 +264,13 @@ func (h *IntentoHandler) ObtenerIntentoPorID(w http.ResponseWriter, r *http.Requ
 		UsuarioID: pgUsuarioID,
 	})
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Intento no encontrado"})
+		respondError(w, http.StatusNotFound, "Intento no encontrado")
 		return
 	}
 
 	respuestasDB, err := h.queries.GetRespuestasPorIntentoID(ctx, pgIntentoID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al obtener respuestas guardadas"})
+		respondError(w, http.StatusInternalServerError, "Error al obtener respuestas guardadas")
 		return
 	}
 
@@ -291,9 +282,7 @@ func (h *IntentoHandler) ObtenerIntentoPorID(w http.ResponseWriter, r *http.Requ
 
 	clavesDB, err := h.queries.GetClavesYExplicacionesByExamenID(ctx, intentoDB.ExamenID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Error al consultar claves"})
+		respondError(w, http.StatusInternalServerError, "Error al consultar claves")
 		return
 	}
 
@@ -349,10 +338,126 @@ func (h *IntentoHandler) ObtenerIntentoPorID(w http.ResponseWriter, r *http.Requ
 		resumen.FinalizadoEn = &intentoDB.FinalizadoEn.Time
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(ReporteIntentoDetalleDTO{
+	respondJSON(w, http.StatusOK, ReporteIntentoDetalleDTO{
 		Intento:  resumen,
 		Detalles: detalles,
+	})
+}
+
+// GET /api/v1/intentos/{id}/resultados
+func (h *IntentoHandler) ObtenerResultados(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userIDStr, ok := auth.GetUserID(ctx)
+	if !ok || userIDStr == "" {
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+		return
+	}
+	usuarioID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
+		return
+	}
+	pgUsuarioID := pgtype.UUID{Bytes: usuarioID, Valid: true}
+
+	intentoIDStr := chi.URLParam(r, "id")
+	intentoUUID, err := uuid.Parse(intentoIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ID de intento inválido")
+		return
+	}
+	pgIntentoID := pgtype.UUID{Bytes: intentoUUID, Valid: true}
+
+	_, err = h.queries.ObtenerIntentoPorID(ctx, db.ObtenerIntentoPorIDParams{
+		ID:        pgIntentoID,
+		UsuarioID: pgUsuarioID,
+	})
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Intento no encontrado o acceso denegado")
+		return
+	}
+
+	resultados, err := h.queries.ObtenerDetalleResultado(ctx, pgIntentoID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Error al obtener resultados detallados")
+		return
+	}
+
+	if resultados == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, resultados)
+}
+
+// ListarHistorial devuelve todos los simulacros realizados por el usuario autenticado
+func (h *IntentoHandler) ListarHistorial(w http.ResponseWriter, r *http.Request) {
+	userIDStr, ok := auth.GetUserID(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+		return
+	}
+
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userIDStr); err != nil {
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
+		return
+	}
+
+	intentos, err := h.queries.ListarIntentosPorUsuario(r.Context(), userUUID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Error al consultar historial de intentos")
+		return
+	}
+
+	if intentos == nil {
+		intentos = []db.ListarIntentosPorUsuarioRow{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"total":    len(intentos),
+		"intentos": intentos,
+	})
+}
+
+// ObtenerResultadoDetalle devuelve el header del intento y el desglose de preguntas con explicaciones
+func (h *IntentoHandler) ObtenerResultadoDetalle(w http.ResponseWriter, r *http.Request) {
+	userIDStr, ok := auth.GetUserID(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+		return
+	}
+
+	intentoIDStr := chi.URLParam(r, "id")
+	var intentoUUID, userUUID pgtype.UUID
+
+	if err := intentoUUID.Scan(intentoIDStr); err != nil || userUUID.Scan(userIDStr) != nil {
+		respondError(w, http.StatusBadRequest, "IDs con formato inválido")
+		return
+	}
+
+	intentoHeader, err := h.queries.ObtenerIntentoPorID(r.Context(), db.ObtenerIntentoPorIDParams{
+		ID:        intentoUUID,
+		UsuarioID: userUUID,
+	})
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Intento no encontrado o no tienes permiso para verlo")
+		return
+	}
+
+	detalle, err := h.queries.ObtenerDetalleResultado(r.Context(), intentoUUID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Error al consultar la retroalimentación del intento")
+		return
+	}
+
+	if detalle == nil {
+		detalle = []db.ObtenerDetalleResultadoRow{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"resumen":   intentoHeader,
+		"preguntas": detalle,
 	})
 }

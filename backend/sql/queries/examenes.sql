@@ -1,3 +1,5 @@
+--examenes.sql
+
 -- name: ListExamenesActivos :many
 SELECT id, titulo, codigo_cuadernillo, descripcion, nivel, tipo, anio, total_preguntas, duracion_minutos
 FROM examenes

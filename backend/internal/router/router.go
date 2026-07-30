@@ -59,9 +59,12 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 
 			// --- INTENTOS ---
 			r.Post("/intentos", intentoH.IniciarIntento)
+			r.Get("/intentos", intentoH.ListarHistorial)
 			r.Get("/intentos", intentoH.ListarIntentos)
 			r.Get("/intentos/{id}", intentoH.ObtenerIntentoPorID)
+			r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultadoDetalle)
 			r.Post("/intentos/{id}/finalizar", intentoH.FinalizarIntento)
+			r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultados) // 👈 NUEVA RUTA FASE 9
 
 			// --- PANEL ADMINISTRADOR ---
 			r.Group(func(r chi.Router) {

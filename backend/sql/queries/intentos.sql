@@ -1,3 +1,4 @@
+--intentos.sql:
 -- name: IniciarIntento :one
 INSERT INTO intentos_examen (
     usuario_id,
@@ -89,3 +90,20 @@ SELECT
     es_correcta
 FROM respuestas_intento
 WHERE intento_id = $1;
+
+-- name: ObtenerDetalleResultado :many
+-- Consulta para ver la retroalimentación pregunta por pregunta en los resultados
+SELECT 
+    p.id AS pregunta_id,
+    p.numero_pregunta,
+    p.texto_pregunta AS enunciado, -- 👈 EL ALIAS CONVIERTE EL NOMBRE PARA EL FRONTEND
+    p.explicacion,
+    ri.opcion_seleccionada_id,
+    o_correcta.id AS opcion_correcta_id,
+    ri.es_correcta
+FROM respuestas_intento ri
+JOIN preguntas p ON ri.pregunta_id = p.id
+LEFT JOIN opciones o_correcta ON o_correcta.pregunta_id = p.id AND o_correcta.es_correcta = TRUE
+WHERE ri.intento_id = $1
+ORDER BY p.numero_pregunta ASC;
+
