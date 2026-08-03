@@ -79,24 +79,26 @@ type RespuestaDocenteDTO struct {
 }
 
 type FinalizarIntentoRequestDTO struct {
-	Respuestas []RespuestaDocenteDTO `json:"respuestas"`
+	Respuestas             []RespuestaDocenteDTO `json:"respuestas"`
+	TiempoEmpleadoSegundos int                   `json:"tiempo_empleado_segundos"` // 👈 Agrega esta línea
 }
 
 type IntentoResumenDTO struct {
-	ID                   uuid.UUID  `json:"id"`
-	ExamenID             uuid.UUID  `json:"examen_id"`
-	ExamenTitulo         string     `json:"examen_titulo,omitempty"`
-	Nivel                string     `json:"nivel,omitempty"`
-	Tipo                 string     `json:"tipo,omitempty"`
-	Anio                 int32      `json:"anio,omitempty"`
-	Modo                 string     `json:"modo"`
-	Puntaje              float64    `json:"puntaje"`
-	TotalPreguntas       int32      `json:"total_preguntas"`
-	PreguntasCorrectas   int32      `json:"preguntas_correctas"`
-	PreguntasIncorrectas int32      `json:"preguntas_incorrectas"`
-	Estado               string     `json:"estado"`
-	IniciadoEn           time.Time  `json:"iniciado_en"`
-	FinalizadoEn         *time.Time `json:"finalizado_en,omitempty"`
+	ID                     uuid.UUID  `json:"id"`
+	ExamenID               uuid.UUID  `json:"examen_id"`
+	ExamenTitulo           string     `json:"examen_titulo,omitempty"`
+	Nivel                  string     `json:"nivel,omitempty"`
+	Tipo                   string     `json:"tipo,omitempty"`
+	Anio                   int32      `json:"anio,omitempty"`
+	Modo                   string     `json:"modo"`
+	Puntaje                float64    `json:"puntaje"`
+	TotalPreguntas         int32      `json:"total_preguntas"`
+	PreguntasCorrectas     int32      `json:"preguntas_correctas"`
+	PreguntasIncorrectas   int32      `json:"preguntas_incorrectas"`
+	TiempoEmpleadoSegundos int32      `json:"tiempo_empleado_segundos"`
+	Estado                 string     `json:"estado"`
+	IniciadoEn             time.Time  `json:"iniciado_en"`
+	FinalizadoEn           *time.Time `json:"finalizado_en,omitempty"`
 }
 
 type DetalleRespuestaRetroalimentacionDTO struct {

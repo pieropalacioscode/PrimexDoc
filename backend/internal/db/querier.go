@@ -24,10 +24,11 @@ type Querier interface {
 	GetRespuestasPorIntentoID(ctx context.Context, intentoID pgtype.UUID) ([]GetRespuestasPorIntentoIDRow, error)
 	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
 	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
+	//intentos.sql:
 	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
+	//examenes.sql
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
-	// Consulta para ver la retroalimentación pregunta por pregunta en los resultados
 	ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error)
 	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)

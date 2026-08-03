@@ -135,17 +135,18 @@ type IntentoRespuesta struct {
 }
 
 type IntentosExaman struct {
-	ID                   pgtype.UUID        `json:"id"`
-	UsuarioID            pgtype.UUID        `json:"usuario_id"`
-	ExamenID             pgtype.UUID        `json:"examen_id"`
-	Modo                 string             `json:"modo"`
-	TotalPreguntas       int32              `json:"total_preguntas"`
-	PreguntasCorrectas   int32              `json:"preguntas_correctas"`
-	PreguntasIncorrectas int32              `json:"preguntas_incorrectas"`
-	Puntaje              pgtype.Numeric     `json:"puntaje"`
-	Estado               string             `json:"estado"`
-	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
-	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+	ID                     pgtype.UUID        `json:"id"`
+	UsuarioID              pgtype.UUID        `json:"usuario_id"`
+	ExamenID               pgtype.UUID        `json:"examen_id"`
+	Modo                   string             `json:"modo"`
+	TotalPreguntas         int32              `json:"total_preguntas"`
+	PreguntasCorrectas     int32              `json:"preguntas_correctas"`
+	PreguntasIncorrectas   int32              `json:"preguntas_incorrectas"`
+	Puntaje                pgtype.Numeric     `json:"puntaje"`
+	TiempoEmpleadoSegundos int32              `json:"tiempo_empleado_segundos"`
+	Estado                 string             `json:"estado"`
+	IniciadoEn             pgtype.Timestamptz `json:"iniciado_en"`
+	FinalizadoEn           pgtype.Timestamptz `json:"finalizado_en"`
 }
 
 type Opcione struct {

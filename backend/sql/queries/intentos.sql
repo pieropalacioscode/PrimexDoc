@@ -12,21 +12,16 @@ INSERT INTO intentos_examen (
 RETURNING id, examen_id, modo, total_preguntas, estado, iniciado_en;
 
 -- name: ObtenerIntentoPorID :one
+-- name: ObtenerIntentoPorID :one
 SELECT 
-    i.id,
-    i.examen_id,
-    e.titulo AS examen_titulo,
-    i.modo,
-    i.puntaje,
-    i.total_preguntas,
-    i.preguntas_correctas,
-    i.preguntas_incorrectas,
-    i.estado,
-    i.iniciado_en,
-    i.finalizado_en
+    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje, 
+    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+    i.tiempo_empleado_segundos, -- 👈 AQUÍ ESTÁ LA MAGIA DEL TIEMPO
+    i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
 JOIN examenes e ON i.examen_id = e.id
 WHERE i.id = $1 AND i.usuario_id = $2;
+
 
 -- name: GetClavesYExplicacionesByExamenID :many
 SELECT 
@@ -58,26 +53,17 @@ SET
     puntaje = $2,
     preguntas_correctas = $3,
     preguntas_incorrectas = $4,
+    tiempo_empleado_segundos = $5,
     estado = 'completado',
     finalizado_en = NOW()
-WHERE id = $1 AND usuario_id = $5;
+WHERE id = $1 AND usuario_id = $6;
 
 -- name: ListarIntentosPorUsuario :many
 SELECT 
-    i.id,
-    i.examen_id,
-    e.titulo AS examen_titulo,
-    e.nivel,
-    e.tipo,
-    e.anio,
-    i.modo,
-    i.puntaje,
-    i.total_preguntas,
-    i.preguntas_correctas,
-    i.preguntas_incorrectas,
-    i.estado,
-    i.iniciado_en,
-    i.finalizado_en
+    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo, 
+    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+    i.tiempo_empleado_segundos, -- 👈 PARA MOSTRAR TIEMPOS EN EL HISTORIAL
+    i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
 JOIN examenes e ON i.examen_id = e.id
 WHERE i.usuario_id = $1
@@ -92,18 +78,29 @@ FROM respuestas_intento
 WHERE intento_id = $1;
 
 -- name: ObtenerDetalleResultado :many
--- Consulta para ver la retroalimentación pregunta por pregunta en los resultados
 SELECT 
-    p.id AS pregunta_id,
-    p.numero_pregunta,
-    p.texto_pregunta AS enunciado, -- 👈 EL ALIAS CONVIERTE EL NOMBRE PARA EL FRONTEND
-    p.explicacion,
-    ri.opcion_seleccionada_id,
-    o_correcta.id AS opcion_correcta_id,
-    ri.es_correcta
+    p.id AS pregunta_id, 
+    p.numero_pregunta, 
+    p.texto_pregunta AS enunciado, 
+    tb.id AS texto_base_id, 
+    tb.titulo AS texto_base_titulo,
+    tb.contenido AS texto_base_contenido,
+    p.explicacion, 
+    ri.opcion_seleccionada_id, 
+    o_correcta.id AS opcion_correcta_id, 
+    ri.es_correcta,
+    (
+        SELECT jsonb_agg(jsonb_build_object(
+            'id', o.id,
+            'etiqueta', o.etiqueta,
+            'texto_opcion', o.texto_opcion
+        ) ORDER BY o.etiqueta ASC)
+        FROM opciones o
+        WHERE o.pregunta_id = p.id
+    ) AS opciones_json
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
+LEFT JOIN textos_base tb ON p.texto_base_id = tb.id
 LEFT JOIN opciones o_correcta ON o_correcta.pregunta_id = p.id AND o_correcta.es_correcta = TRUE
 WHERE ri.intento_id = $1
 ORDER BY p.numero_pregunta ASC;
-

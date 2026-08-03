@@ -17,17 +17,19 @@ SET
     puntaje = $2,
     preguntas_correctas = $3,
     preguntas_incorrectas = $4,
+    tiempo_empleado_segundos = $5,
     estado = 'completado',
     finalizado_en = NOW()
-WHERE id = $1 AND usuario_id = $5
+WHERE id = $1 AND usuario_id = $6
 `
 
 type FinalizarIntentoParams struct {
-	ID                   pgtype.UUID    `json:"id"`
-	Puntaje              pgtype.Numeric `json:"puntaje"`
-	PreguntasCorrectas   int32          `json:"preguntas_correctas"`
-	PreguntasIncorrectas int32          `json:"preguntas_incorrectas"`
-	UsuarioID            pgtype.UUID    `json:"usuario_id"`
+	ID                     pgtype.UUID    `json:"id"`
+	Puntaje                pgtype.Numeric `json:"puntaje"`
+	PreguntasCorrectas     int32          `json:"preguntas_correctas"`
+	PreguntasIncorrectas   int32          `json:"preguntas_incorrectas"`
+	TiempoEmpleadoSegundos int32          `json:"tiempo_empleado_segundos"`
+	UsuarioID              pgtype.UUID    `json:"usuario_id"`
 }
 
 func (q *Queries) FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error {
@@ -36,6 +38,7 @@ func (q *Queries) FinalizarIntento(ctx context.Context, arg FinalizarIntentoPara
 		arg.Puntaje,
 		arg.PreguntasCorrectas,
 		arg.PreguntasIncorrectas,
+		arg.TiempoEmpleadoSegundos,
 		arg.UsuarioID,
 	)
 	return err
@@ -148,6 +151,7 @@ type IniciarIntentoRow struct {
 	IniciadoEn     pgtype.Timestamptz `json:"iniciado_en"`
 }
 
+// intentos.sql:
 func (q *Queries) IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error) {
 	row := q.db.QueryRow(ctx, iniciarIntento,
 		arg.UsuarioID,
@@ -169,20 +173,10 @@ func (q *Queries) IniciarIntento(ctx context.Context, arg IniciarIntentoParams) 
 
 const listarIntentosPorUsuario = `-- name: ListarIntentosPorUsuario :many
 SELECT 
-    i.id,
-    i.examen_id,
-    e.titulo AS examen_titulo,
-    e.nivel,
-    e.tipo,
-    e.anio,
-    i.modo,
-    i.puntaje,
-    i.total_preguntas,
-    i.preguntas_correctas,
-    i.preguntas_incorrectas,
-    i.estado,
-    i.iniciado_en,
-    i.finalizado_en
+    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo, 
+    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+    i.tiempo_empleado_segundos, -- 👈 PARA MOSTRAR TIEMPOS EN EL HISTORIAL
+    i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
 JOIN examenes e ON i.examen_id = e.id
 WHERE i.usuario_id = $1
@@ -190,20 +184,21 @@ ORDER BY i.iniciado_en DESC
 `
 
 type ListarIntentosPorUsuarioRow struct {
-	ID                   pgtype.UUID        `json:"id"`
-	ExamenID             pgtype.UUID        `json:"examen_id"`
-	ExamenTitulo         string             `json:"examen_titulo"`
-	Nivel                string             `json:"nivel"`
-	Tipo                 string             `json:"tipo"`
-	Anio                 int32              `json:"anio"`
-	Modo                 string             `json:"modo"`
-	Puntaje              pgtype.Numeric     `json:"puntaje"`
-	TotalPreguntas       int32              `json:"total_preguntas"`
-	PreguntasCorrectas   int32              `json:"preguntas_correctas"`
-	PreguntasIncorrectas int32              `json:"preguntas_incorrectas"`
-	Estado               string             `json:"estado"`
-	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
-	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+	ID                     pgtype.UUID        `json:"id"`
+	ExamenID               pgtype.UUID        `json:"examen_id"`
+	ExamenTitulo           string             `json:"examen_titulo"`
+	Nivel                  string             `json:"nivel"`
+	Tipo                   string             `json:"tipo"`
+	Anio                   int32              `json:"anio"`
+	Modo                   string             `json:"modo"`
+	Puntaje                pgtype.Numeric     `json:"puntaje"`
+	TotalPreguntas         int32              `json:"total_preguntas"`
+	PreguntasCorrectas     int32              `json:"preguntas_correctas"`
+	PreguntasIncorrectas   int32              `json:"preguntas_incorrectas"`
+	TiempoEmpleadoSegundos int32              `json:"tiempo_empleado_segundos"`
+	Estado                 string             `json:"estado"`
+	IniciadoEn             pgtype.Timestamptz `json:"iniciado_en"`
+	FinalizadoEn           pgtype.Timestamptz `json:"finalizado_en"`
 }
 
 func (q *Queries) ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error) {
@@ -227,6 +222,7 @@ func (q *Queries) ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype
 			&i.TotalPreguntas,
 			&i.PreguntasCorrectas,
 			&i.PreguntasIncorrectas,
+			&i.TiempoEmpleadoSegundos,
 			&i.Estado,
 			&i.IniciadoEn,
 			&i.FinalizadoEn,
@@ -243,15 +239,28 @@ func (q *Queries) ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype
 
 const obtenerDetalleResultado = `-- name: ObtenerDetalleResultado :many
 SELECT 
-    p.id AS pregunta_id,
-    p.numero_pregunta,
-    p.texto_pregunta AS enunciado, -- 👈 EL ALIAS CONVIERTE EL NOMBRE PARA EL FRONTEND
-    p.explicacion,
-    ri.opcion_seleccionada_id,
-    o_correcta.id AS opcion_correcta_id,
-    ri.es_correcta
+    p.id AS pregunta_id, 
+    p.numero_pregunta, 
+    p.texto_pregunta AS enunciado, 
+    tb.id AS texto_base_id, 
+    tb.titulo AS texto_base_titulo,
+    tb.contenido AS texto_base_contenido,
+    p.explicacion, 
+    ri.opcion_seleccionada_id, 
+    o_correcta.id AS opcion_correcta_id, 
+    ri.es_correcta,
+    (
+        SELECT jsonb_agg(jsonb_build_object(
+            'id', o.id,
+            'etiqueta', o.etiqueta,
+            'texto_opcion', o.texto_opcion
+        ) ORDER BY o.etiqueta ASC)
+        FROM opciones o
+        WHERE o.pregunta_id = p.id
+    ) AS opciones_json
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
+LEFT JOIN textos_base tb ON p.texto_base_id = tb.id
 LEFT JOIN opciones o_correcta ON o_correcta.pregunta_id = p.id AND o_correcta.es_correcta = TRUE
 WHERE ri.intento_id = $1
 ORDER BY p.numero_pregunta ASC
@@ -261,13 +270,16 @@ type ObtenerDetalleResultadoRow struct {
 	PreguntaID           pgtype.UUID `json:"pregunta_id"`
 	NumeroPregunta       int32       `json:"numero_pregunta"`
 	Enunciado            string      `json:"enunciado"`
+	TextoBaseID          pgtype.UUID `json:"texto_base_id"`
+	TextoBaseTitulo      pgtype.Text `json:"texto_base_titulo"`
+	TextoBaseContenido   pgtype.Text `json:"texto_base_contenido"`
 	Explicacion          pgtype.Text `json:"explicacion"`
 	OpcionSeleccionadaID pgtype.UUID `json:"opcion_seleccionada_id"`
 	OpcionCorrectaID     pgtype.UUID `json:"opcion_correcta_id"`
 	EsCorrecta           bool        `json:"es_correcta"`
+	OpcionesJson         []byte      `json:"opciones_json"`
 }
 
-// Consulta para ver la retroalimentación pregunta por pregunta en los resultados
 func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error) {
 	rows, err := q.db.Query(ctx, obtenerDetalleResultado, intentoID)
 	if err != nil {
@@ -281,10 +293,14 @@ func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.
 			&i.PreguntaID,
 			&i.NumeroPregunta,
 			&i.Enunciado,
+			&i.TextoBaseID,
+			&i.TextoBaseTitulo,
+			&i.TextoBaseContenido,
 			&i.Explicacion,
 			&i.OpcionSeleccionadaID,
 			&i.OpcionCorrectaID,
 			&i.EsCorrecta,
+			&i.OpcionesJson,
 		); err != nil {
 			return nil, err
 		}
@@ -298,17 +314,10 @@ func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.
 
 const obtenerIntentoPorID = `-- name: ObtenerIntentoPorID :one
 SELECT 
-    i.id,
-    i.examen_id,
-    e.titulo AS examen_titulo,
-    i.modo,
-    i.puntaje,
-    i.total_preguntas,
-    i.preguntas_correctas,
-    i.preguntas_incorrectas,
-    i.estado,
-    i.iniciado_en,
-    i.finalizado_en
+    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje, 
+    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+    i.tiempo_empleado_segundos, -- 👈 AQUÍ ESTÁ LA MAGIA DEL TIEMPO
+    i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
 JOIN examenes e ON i.examen_id = e.id
 WHERE i.id = $1 AND i.usuario_id = $2
@@ -320,17 +329,18 @@ type ObtenerIntentoPorIDParams struct {
 }
 
 type ObtenerIntentoPorIDRow struct {
-	ID                   pgtype.UUID        `json:"id"`
-	ExamenID             pgtype.UUID        `json:"examen_id"`
-	ExamenTitulo         string             `json:"examen_titulo"`
-	Modo                 string             `json:"modo"`
-	Puntaje              pgtype.Numeric     `json:"puntaje"`
-	TotalPreguntas       int32              `json:"total_preguntas"`
-	PreguntasCorrectas   int32              `json:"preguntas_correctas"`
-	PreguntasIncorrectas int32              `json:"preguntas_incorrectas"`
-	Estado               string             `json:"estado"`
-	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
-	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+	ID                     pgtype.UUID        `json:"id"`
+	ExamenID               pgtype.UUID        `json:"examen_id"`
+	ExamenTitulo           string             `json:"examen_titulo"`
+	Modo                   string             `json:"modo"`
+	Puntaje                pgtype.Numeric     `json:"puntaje"`
+	TotalPreguntas         int32              `json:"total_preguntas"`
+	PreguntasCorrectas     int32              `json:"preguntas_correctas"`
+	PreguntasIncorrectas   int32              `json:"preguntas_incorrectas"`
+	TiempoEmpleadoSegundos int32              `json:"tiempo_empleado_segundos"`
+	Estado                 string             `json:"estado"`
+	IniciadoEn             pgtype.Timestamptz `json:"iniciado_en"`
+	FinalizadoEn           pgtype.Timestamptz `json:"finalizado_en"`
 }
 
 func (q *Queries) ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error) {
@@ -345,6 +355,7 @@ func (q *Queries) ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPor
 		&i.TotalPreguntas,
 		&i.PreguntasCorrectas,
 		&i.PreguntasIncorrectas,
+		&i.TiempoEmpleadoSegundos,
 		&i.Estado,
 		&i.IniciadoEn,
 		&i.FinalizadoEn,

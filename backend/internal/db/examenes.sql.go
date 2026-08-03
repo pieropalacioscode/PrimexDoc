@@ -167,6 +167,7 @@ func (q *Queries) GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.U
 }
 
 const listExamenesActivos = `-- name: ListExamenesActivos :many
+
 SELECT id, titulo, codigo_cuadernillo, descripcion, nivel, tipo, anio, total_preguntas, duracion_minutos
 FROM examenes
 WHERE activo = true
@@ -185,6 +186,7 @@ type ListExamenesActivosRow struct {
 	DuracionMinutos   int32       `json:"duracion_minutos"`
 }
 
+// examenes.sql
 func (q *Queries) ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error) {
 	rows, err := q.db.Query(ctx, listExamenesActivos)
 	if err != nil {
