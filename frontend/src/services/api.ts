@@ -1,10 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-export async function fetchAPI<T>(
+export async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('primex_token') : null;
+  const token =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('primex_token')
+      : null;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -12,7 +16,7 @@ export async function fetchAPI<T>(
   };
 
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
@@ -23,7 +27,6 @@ export async function fetchAPI<T>(
   const data = await response.json();
 
   if (!response.ok) {
-    // Si la API devuelve un error de paywall u otro mensaje tipado
     throw {
       status: response.status,
       ...data,
@@ -32,3 +35,6 @@ export async function fetchAPI<T>(
 
   return data as T;
 }
+
+// Alias para compatibilidad
+export const fetchAPI = apiFetch;

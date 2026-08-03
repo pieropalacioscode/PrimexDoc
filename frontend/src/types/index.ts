@@ -90,6 +90,7 @@ export interface Pregunta {
 export interface Examen {
   id: string;
   titulo: string;
+  codigo_cuadernillo: string;
   descripcion?: string;
   area?: string;                        // Inicial, Primaria, Secundaria, etc.
   nivel?: string;
@@ -98,6 +99,11 @@ export interface Examen {
   duracion_minutos: number;
   es_demo?: boolean;
   total_preguntas?: number;
+}
+export interface ExamenCompleto extends Omit<Examen, 'nivel' | 'tipo' | 'anio'> {
+  nivel?: string;
+  tipo?: string;
+  anio?: number | string;
 }
 
 export interface ExamenDetalle extends Examen {
@@ -154,4 +160,30 @@ export interface ResultadoDetallado extends ResultadoEvaluacion {
   tiempo_empleado_segundos?: number;
   fecha?: string;
   detalles?: DetalleRespuestaEvaluacion[];
+}
+
+export interface IntentoResumen {
+  id: string;
+  examen_id: string;
+  examen_titulo?: string;
+  modo: string;
+  puntaje: number;
+  total_preguntas: number;
+  preguntas_correctas: number;
+  preguntas_incorrectas: number;
+  tiempo_empleado_segundos?: number; // 👈 ¡AÑADE ESTA PROPIEDAD!
+  estado: string;
+  iniciado_en: string;
+  finalizado_en?: string;
+}
+
+export interface PreguntaResultado {
+  pregunta_id: string;
+  numero_pregunta: number;
+  enunciado: string;
+  texto_base_id?: string | null; // 👈 ¡VITAL PARA QUE FUNCIONE EL BOTÓN DE LECTURAS!
+  explicacion: string;
+  opcion_seleccionada_id?: string | null;
+  opcion_correcta_id?: string | null;
+  es_correcta: boolean;
 }
