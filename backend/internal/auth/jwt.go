@@ -8,22 +8,24 @@ import (
 )
 
 type JWTCustomClaims struct {
-	UserID string `json:"user_id"`
-	Correo string `json:"correo"`
-	Rol    string `json:"rol"`
+	UserID         string `json:"user_id"`
+	Correo         string `json:"correo"`
+	Rol            string `json:"rol"`
+	NombreCompleto string `json:"nombre_completo"`
 	jwt.RegisteredClaims
 }
 
 // GenerarToken firma un nuevo JWT con duración de 24 horas
-func GenerarToken(userID, correo, rol, secret string) (string, error) {
+func GenerarToken(userID, correo, rol, nombre, secret string) (string, error) {
 	claims := JWTCustomClaims{
-		UserID: userID,
-		Correo: correo,
-		Rol:    rol,
+		UserID:         userID,
+		Correo:         correo,
+		Rol:            rol,
+		NombreCompleto: nombre, // <-- Asigna esto
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "docente-smart-primex",
+			Issuer:    "docent-smart-primex",
 		},
 	}
 

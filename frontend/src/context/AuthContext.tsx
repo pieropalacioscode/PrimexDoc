@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Usuario, AuthResponse } from '@/types';
 import { useRouter } from 'next/navigation';
 
@@ -9,6 +9,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (authData: AuthResponse) => void;
+  loginWithToken: (token: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -20,8 +21,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
+  // Función para cerrar sesión (Memoizada para evitar re-renders)
+  const logout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('primex_token');
+    localStorage.removeItem('primex_user');
+    document.cookie = 'primex_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    router.push('/login');
+  }, [router]);
+
+  // Cargar sesión inicial
   useEffect(() => {
-    // Cargar credenciales guardadas
     const storedToken = localStorage.getItem('primex_token');
     const storedUser = localStorage.getItem('primex_user');
 
@@ -34,33 +45,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setIsLoading(false);
-  }, []);
+  }, [logout]);
 
-  const login = (authData: AuthResponse) => {
+  // Función Login Tradicional
+  const login = useCallback((authData: AuthResponse) => {
     setToken(authData.token);
     setUser(authData.usuario);
-
-    // Persistir en LocalStorage
+    
     localStorage.setItem('primex_token', authData.token);
     localStorage.setItem('primex_user', JSON.stringify(authData.usuario));
-
-    // Guardar en Cookie para Next.js Middleware
+    
+    // Cookie para el middleware de Next.js
     document.cookie = `primex_token=${authData.token}; path=/; max-age=604800; SameSite=Lax`;
-
+    
     router.push('/examenes');
-  };
+  }, [router]);
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('primex_token');
-    localStorage.removeItem('primex_user');
-    document.cookie = 'primex_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    router.push('/login');
-  };
+  // Función Login para Google (Procesa el Token y extrae el usuario)
+  const loginWithToken = useCallback(async (newToken: string): Promise<boolean> => {
+    try {
+      // Decodificar el Payload del JWT
+      const base64Url = newToken.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+
+      const parsedUser: Usuario = {
+        id: payload.user_id,
+        correo: payload.correo,
+        rol: payload.rol,
+        nombre_completo: payload.nombre_completo || 'Docente Primex',
+      };
+
+      // Guardar estados
+      setToken(newToken);
+      setUser(parsedUser);
+
+      // Persistencia
+      localStorage.setItem('primex_token', newToken);
+      localStorage.setItem('primex_user', JSON.stringify(parsedUser));
+      document.cookie = `primex_token=${newToken}; path=/; max-age=604800; SameSite=Lax`;
+
+      return true;
+    } catch (error) {
+      console.error("Error al procesar token de Google:", error);
+      return false;
+    }
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, loginWithToken, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -68,8 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
-  }
+  if (!context) throw new Error('useAuth debe ser usado dentro de un AuthProvider');
   return context;
 }

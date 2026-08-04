@@ -12,7 +12,9 @@ import (
 
 type Querier interface {
 	ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (ActivarSuscripcionRow, error)
+	ActualizarContrasena(ctx context.Context, arg ActualizarContrasenaParams) error
 	CheckActiveSubscription(ctx context.Context, usuarioID pgtype.UUID) (bool, error)
+	// queries/usuarios.sql name: CrearUsuario :one
 	CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error)
 	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
 	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
@@ -24,15 +26,18 @@ type Querier interface {
 	GetRespuestasPorIntentoID(ctx context.Context, intentoID pgtype.UUID) ([]GetRespuestasPorIntentoIDRow, error)
 	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
 	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
+	GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodigoRecuperacionParams) (pgtype.UUID, error)
 	//intentos.sql:
 	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
 	//examenes.sql
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
+	MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) error
 	ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error)
 	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)
 	RegistrarRespuestaIntento(ctx context.Context, arg RegistrarRespuestaIntentoParams) error
+	ValidarCodigoRecuperacion(ctx context.Context, arg ValidarCodigoRecuperacionParams) (PasswordReset, error)
 }
 
 var _ Querier = (*Queries)(nil)

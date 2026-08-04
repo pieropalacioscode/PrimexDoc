@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -17,11 +18,20 @@ type GoogleAuthHandler struct {
 	DB *db.Queries
 }
 
+func NewGoogleAuthHandler(queries *db.Queries) *GoogleAuthHandler {
+	return &GoogleAuthHandler{DB: queries}
+}
+
 func getGoogleConfig() *oauth2.Config {
+	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
+	if redirectURL == "" {
+		redirectURL = "http://localhost:8080/api/v1/auth/google/callback"
+	}
+
 	return &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
+		RedirectURL:  redirectURL,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
@@ -42,7 +52,7 @@ type GoogleUser struct {
 	Name  string `json:"name"`
 }
 
-// GoogleCallback procesa la respuesta de Google, hace el upsert y emite el JWT
+// GoogleCallback procesa la respuesta de Google, guarda/obtiene el usuario y redirige al frontend
 func (h *GoogleAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	code := r.URL.Query().Get("code")
@@ -72,7 +82,7 @@ func (h *GoogleAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Buscar o crear usuario con sqlc usando los campos de la tabla real
+	// Buscar o crear usuario en la BD con sqlc
 	dbUser, err := h.DB.GetOrCreateUserByEmail(ctx, db.GetOrCreateUserByEmailParams{
 		Correo:         gUser.Email,
 		NombreCompleto: gUser.Name,
@@ -87,26 +97,23 @@ func (h *GoogleAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Reques
 		jwtSecret = "secret_fallback_dev"
 	}
 
-	// 👇 CAMBIA ESTA PARTE EN TU GOOGLE_AUTH.GO
 	rolStr := dbUser.Rol.String
 	if rolStr == "" {
 		rolStr = "usuario"
 	}
 
-	appToken, err := auth.GenerarToken(dbUser.ID.String(), dbUser.Correo, rolStr, jwtSecret)
+	appToken, err := auth.GenerarToken(dbUser.ID.String(), dbUser.Correo, rolStr, dbUser.NombreCompleto, jwtSecret)
 	if err != nil {
 		http.Error(w, `{"error": "Error al emitir sesión"}`, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"token": appToken,
-		"usuario": map[string]interface{}{
-			"id":     dbUser.ID,
-			"correo": dbUser.Correo,
-			"rol":    rolStr,
-		},
-	})
+	// Redirigir de vuelta al Frontend pasando el token generado
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+
+	targetURL := fmt.Sprintf("%s/auth/callback?token=%s", frontendURL, appToken)
+	http.Redirect(w, r, targetURL, http.StatusSeeOther)
 }

@@ -2,13 +2,13 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
@@ -16,16 +16,8 @@ import (
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 )
 
-// Struct del Handler y Constructor para el Router
-type AuthHandler struct {
-	DB *db.Queries
-}
+// --- ESTRUCTURAS DE DATOS (DTOs) ---
 
-func NewAuthHandler(queries *db.Queries) *AuthHandler {
-	return &AuthHandler{DB: queries}
-}
-
-// Estructuras de Petición / Respuesta (DTOs)
 type RegisterRequest struct {
 	Correo         string `json:"correo"`
 	Contrasena     string `json:"contrasena"`
@@ -35,6 +27,16 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Correo     string `json:"correo"`
 	Contrasena string `json:"contrasena"`
+}
+
+type ForgotPasswordRequest struct {
+	Correo string `json:"correo"`
+}
+
+type ResetPasswordRequest struct {
+	Correo          string `json:"correo"`
+	Codigo          string `json:"codigo"`
+	NuevaContrasena string `json:"nueva_contrasena"`
 }
 
 type AuthResponse struct {
@@ -53,7 +55,18 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// Helpers para respuestas JSON unificadas
+// --- HANDLER CONFIG ---
+
+type AuthHandler struct {
+	DB *db.Queries
+}
+
+func NewAuthHandler(queries *db.Queries) *AuthHandler {
+	return &AuthHandler{DB: queries}
+}
+
+// --- HELPERS ---
+
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -64,7 +77,6 @@ func respondWithError(w http.ResponseWriter, code int, message string) {
 	respondWithJSON(w, code, ErrorResponse{Error: message})
 }
 
-// Helper para convertir pgtype.UUID a string canónico (8-4-4-4-12)
 func uuidToString(u pgtype.UUID) string {
 	if !u.Valid {
 		return ""
@@ -73,7 +85,9 @@ func uuidToString(u pgtype.UUID) string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// Registro de nuevos docentes
+// --- MÉTODOS DEL HANDLER ---
+
+// Register: Registro de nuevos docentes
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -94,18 +108,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verificar disponibilidad de correo
 	_, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), req.Correo)
 	if err == nil {
 		respondWithError(w, http.StatusConflict, "El correo electrónico ya está registrado")
-		return
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		respondWithError(w, http.StatusInternalServerError, "Error interno al verificar disponibilidad de usuario")
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Contrasena), 12)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error al procesar la seguridad de la contraseña")
+		respondWithError(w, http.StatusInternalServerError, "Error al procesar la seguridad")
 		return
 	}
 
@@ -119,24 +131,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Rol:            rolText,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error al guardar el usuario en la base de datos")
+		respondWithError(w, http.StatusInternalServerError, "Error al guardar el usuario")
 		return
 	}
 
 	userIDStr := uuidToString(nuevoUsuario.ID)
-	rolStr := "usuario"
-	if nuevoUsuario.Rol.Valid && nuevoUsuario.Rol.String != "" {
-		rolStr = nuevoUsuario.Rol.String
-	}
-
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = "secret_fallback_dev"
 	}
 
-	tokenStr, err := auth.GenerarToken(userIDStr, nuevoUsuario.Correo, rolStr, jwtSecret)
+	tokenStr, err := auth.GenerarToken(userIDStr, nuevoUsuario.Correo, "usuario", nuevoUsuario.NombreCompleto, jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error al generar el token de sesión")
+		respondWithError(w, http.StatusInternalServerError, "Error al generar sesión")
 		return
 	}
 
@@ -146,33 +153,22 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			ID:             userIDStr,
 			Correo:         nuevoUsuario.Correo,
 			NombreCompleto: nuevoUsuario.NombreCompleto,
-			Rol:            rolStr,
+			Rol:            "usuario",
 		},
 	})
 }
 
-// Login de docentes
+// Login: Inicio de sesión tradicional
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "El cuerpo de la petición no es un JSON válido")
+		respondWithError(w, http.StatusBadRequest, "JSON inválido")
 		return
 	}
 
-	req.Correo = strings.ToLower(strings.TrimSpace(req.Correo))
-
-	if req.Correo == "" || req.Contrasena == "" {
-		respondWithError(w, http.StatusBadRequest, "Debe proporcionar correo y contraseña")
-		return
-	}
-
-	usuario, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), req.Correo)
+	usuario, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), strings.ToLower(req.Correo))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			respondWithError(w, http.StatusUnauthorized, "Credenciales incorrectas")
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Error de servidor al consultar credenciales")
+		respondWithError(w, http.StatusUnauthorized, "Credenciales incorrectas")
 		return
 	}
 
@@ -183,7 +179,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	userIDStr := uuidToString(usuario.ID)
 	rolStr := "usuario"
-	if usuario.Rol.Valid && usuario.Rol.String != "" {
+	if usuario.Rol.Valid {
 		rolStr = usuario.Rol.String
 	}
 
@@ -192,9 +188,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		jwtSecret = "secret_fallback_dev"
 	}
 
-	tokenStr, err := auth.GenerarToken(userIDStr, usuario.Correo, rolStr, jwtSecret)
+	tokenStr, err := auth.GenerarToken(userIDStr, usuario.Correo, rolStr, usuario.NombreCompleto, jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error al generar el token de sesión")
+		respondWithError(w, http.StatusInternalServerError, "Error al generar sesión")
 		return
 	}
 
@@ -206,5 +202,99 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			NombreCompleto: usuario.NombreCompleto,
 			Rol:            rolStr,
 		},
+	})
+}
+
+// ForgotPassword: Genera el código de 6 dígitos y lo envía por email
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req ForgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Correo inválido")
+		return
+	}
+
+	// 1. Verificar si el usuario existe
+	_, err := h.DB.ObtenerUsuarioPorCorreo(r.Context(), req.Correo)
+	if err != nil {
+		// Por seguridad, respondemos OK para no revelar qué correos existen
+		respondWithJSON(w, http.StatusOK, map[string]string{"mensaje": "Si el correo existe, recibirás un código"})
+		return
+	}
+
+	// 2. Generar código aleatorio de 6 dígitos
+	codigo := fmt.Sprintf("%06d", rand.New(rand.NewSource(time.Now().UnixNano())).Intn(1000000))
+
+	// 3. Guardar en base de datos con expiración de 15 minutos
+	expiracion := time.Now().Add(15 * time.Minute)
+	_, err = h.DB.GuardarCodigoRecuperacion(r.Context(), db.GuardarCodigoRecuperacionParams{
+		Correo:   req.Correo,
+		Codigo:   codigo,
+		ExpiraEn: pgtype.Timestamptz{Time: expiracion, Valid: true},
+	})
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error al generar código de seguridad")
+		return
+	}
+
+	// 4. Enviar Email Real (usando el servicio en internal/auth)
+	// No bloqueamos la respuesta si el email falla, pero lo logueamos
+	go func() {
+		errMail := auth.EnviarCodigoEmail(req.Correo, codigo)
+		if errMail != nil {
+			fmt.Printf("❌ Error enviando email a %s: %v\n", req.Correo, errMail)
+		} else {
+			fmt.Printf("✅ Email enviado exitosamente a %s\n", req.Correo)
+		}
+	}()
+
+	// 5. Log de respaldo en consola
+	fmt.Printf("\n--- 📧 CÓDIGO GENERADO: %s (Usuario: %s) ---\n", codigo, req.Correo)
+
+	respondWithJSON(w, http.StatusOK, map[string]string{
+		"mensaje": "Código de seguridad enviado a tu correo",
+	})
+}
+
+// ResetPassword: Valida el código y actualiza la contraseña
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Datos de entrada inválidos")
+		return
+	}
+
+	// 1. Validar el código en la base de datos (usado=false y expira_en > now)
+	resetData, err := h.DB.ValidarCodigoRecuperacion(r.Context(), db.ValidarCodigoRecuperacionParams{
+		Correo: req.Correo,
+		Codigo: req.Codigo,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "El código es incorrecto, ya fue usado o ha expirado")
+		return
+	}
+
+	// 2. Hashear la nueva contraseña
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NuevaContrasena), 12)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error al procesar la nueva clave")
+		return
+	}
+
+	// 3. Actualizar la contraseña del usuario
+	err = h.DB.ActualizarContrasena(r.Context(), db.ActualizarContrasenaParams{
+		Correo:         req.Correo,
+		ContrasenaHash: string(hashedPassword),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "No se pudo actualizar la contraseña")
+		return
+	}
+
+	// 4. Marcar código como usado para invalidarlo
+	_ = h.DB.MarcarCodigoComoUsado(r.Context(), resetData.ID)
+
+	respondWithJSON(w, http.StatusOK, map[string]string{
+		"mensaje": "Contraseña actualizada exitosamente",
 	})
 }

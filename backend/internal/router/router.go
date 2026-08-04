@@ -36,12 +36,16 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// 🔓 Rutas Públicas (Autenticación Tradicional y Google OAuth)
+		// 🔓 Rutas Públicas
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authH.Register)
 			r.Post("/login", authH.Login)
 
-			// Endpoints de Google OAuth 2.0
+			// ESTAS SON LAS QUE DEBES AGREGAR AQUÍ:
+			r.Post("/forgot-password", authH.ForgotPassword)
+			r.Post("/reset-password", authH.ResetPassword)
+
+			// OAuth
 			r.Get("/google/login", googleH.GoogleLogin)
 			r.Get("/google/callback", googleH.GoogleCallback)
 		})

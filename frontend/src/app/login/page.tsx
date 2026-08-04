@@ -108,21 +108,25 @@ export default function LoginPage() {
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 text-sm"
             />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              required
-              value={contrasena}
-              onChange={(e) => setContrasena(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 text-sm"
-            />
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Contraseña
+          </label>
+          <input
+            type="password"
+            required
+            value={contrasena}
+            onChange={(e) => setContrasena(e.target.value)}
+            placeholder="••••••••"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 text-sm"
+          />
+          {/* ENLACE DE RECUPERACIÓN */}
+          <div className="flex justify-end mt-1.5">
+            <Link href="/forgot-password"  className="text-xs text-blue-600 font-medium hover:underline">
+              ¿Olvidaste tu contraseña?
+            </Link>
           </div>
-
+        </div>
           <button
             type="submit"
             disabled={loading}

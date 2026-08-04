@@ -1,4 +1,4 @@
--- Habilitar extensión UUID para identificadores seguros
+-- 001_init_schema.sql Habilitar extensión UUID para identificadores seguros
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. Tabla de Usuarios (Docentes)
@@ -94,3 +94,13 @@ CREATE TABLE intento_respuestas (
     CONSTRAINT unique_intento_pregunta UNIQUE (intento_id, pregunta_id)
 );
 CREATE INDEX idx_intento_respuestas_intento ON intento_respuestas(intento_id);
+
+CREATE TABLE password_resets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    correo VARCHAR(255) NOT NULL,
+    codigo VARCHAR(6) NOT NULL,
+    expira_en TIMESTAMP WITH TIME ZONE NOT NULL,
+    usado BOOLEAN DEFAULT FALSE,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_password_resets_valido ON password_resets(correo, codigo) WHERE usado = FALSE;

@@ -157,6 +157,15 @@ type Opcione struct {
 	EsCorrecta  bool        `json:"es_correcta"`
 }
 
+type PasswordReset struct {
+	ID       pgtype.UUID        `json:"id"`
+	Correo   string             `json:"correo"`
+	Codigo   string             `json:"codigo"`
+	ExpiraEn pgtype.Timestamptz `json:"expira_en"`
+	Usado    pgtype.Bool        `json:"usado"`
+	CreadoEn pgtype.Timestamptz `json:"creado_en"`
+}
+
 type Pregunta struct {
 	ID               pgtype.UUID        `json:"id"`
 	ExamenID         pgtype.UUID        `json:"examen_id"`

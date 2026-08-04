@@ -11,36 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const actualizarContrasena = `-- name: ActualizarContrasena :exec
+UPDATE usuarios SET contrasena_hash = $2, actualizado_en = NOW() WHERE correo = $1
+`
+
+type ActualizarContrasenaParams struct {
+	Correo         string `json:"correo"`
+	ContrasenaHash string `json:"contrasena_hash"`
+}
+
+func (q *Queries) ActualizarContrasena(ctx context.Context, arg ActualizarContrasenaParams) error {
+	_, err := q.db.Exec(ctx, actualizarContrasena, arg.Correo, arg.ContrasenaHash)
+	return err
+}
+
 const crearUsuario = `-- name: CrearUsuario :one
-INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol, suscripcion_hasta)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, correo, nombre_completo, rol, suscripcion_hasta, creado_en
+INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol)
+VALUES ($1, $2, $3, $4)
+RETURNING id, correo, nombre_completo, rol, creado_en
 `
 
 type CrearUsuarioParams struct {
-	Correo           string             `json:"correo"`
-	ContrasenaHash   string             `json:"contrasena_hash"`
-	NombreCompleto   string             `json:"nombre_completo"`
-	Rol              pgtype.Text        `json:"rol"`
-	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+	Correo         string      `json:"correo"`
+	ContrasenaHash string      `json:"contrasena_hash"`
+	NombreCompleto string      `json:"nombre_completo"`
+	Rol            pgtype.Text `json:"rol"`
 }
 
 type CrearUsuarioRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	Correo           string             `json:"correo"`
-	NombreCompleto   string             `json:"nombre_completo"`
-	Rol              pgtype.Text        `json:"rol"`
-	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
-	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+	ID             pgtype.UUID        `json:"id"`
+	Correo         string             `json:"correo"`
+	NombreCompleto string             `json:"nombre_completo"`
+	Rol            pgtype.Text        `json:"rol"`
+	CreadoEn       pgtype.Timestamptz `json:"creado_en"`
 }
 
+// queries/usuarios.sql name: CrearUsuario :one
 func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error) {
 	row := q.db.QueryRow(ctx, crearUsuario,
 		arg.Correo,
 		arg.ContrasenaHash,
 		arg.NombreCompleto,
 		arg.Rol,
-		arg.SuscripcionHasta,
 	)
 	var i CrearUsuarioRow
 	err := row.Scan(
@@ -48,7 +60,6 @@ func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (Cre
 		&i.Correo,
 		&i.NombreCompleto,
 		&i.Rol,
-		&i.SuscripcionHasta,
 		&i.CreadoEn,
 	)
 	return i, err
@@ -91,6 +102,34 @@ func (q *Queries) GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUse
 	return i, err
 }
 
+const guardarCodigoRecuperacion = `-- name: GuardarCodigoRecuperacion :one
+INSERT INTO password_resets (correo, codigo, expira_en)
+VALUES ($1, $2, $3)
+RETURNING id
+`
+
+type GuardarCodigoRecuperacionParams struct {
+	Correo   string             `json:"correo"`
+	Codigo   string             `json:"codigo"`
+	ExpiraEn pgtype.Timestamptz `json:"expira_en"`
+}
+
+func (q *Queries) GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodigoRecuperacionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, guardarCodigoRecuperacion, arg.Correo, arg.Codigo, arg.ExpiraEn)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const marcarCodigoComoUsado = `-- name: MarcarCodigoComoUsado :exec
+UPDATE password_resets SET usado = TRUE WHERE id = $1
+`
+
+func (q *Queries) MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, marcarCodigoComoUsado, id)
+	return err
+}
+
 const obtenerUsuarioPorCorreo = `-- name: ObtenerUsuarioPorCorreo :one
 SELECT id, correo, contrasena_hash, nombre_completo, rol, suscripcion_hasta, creado_en, actualizado_en FROM usuarios WHERE correo = $1 LIMIT 1
 `
@@ -107,6 +146,31 @@ func (q *Queries) ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (U
 		&i.SuscripcionHasta,
 		&i.CreadoEn,
 		&i.ActualizadoEn,
+	)
+	return i, err
+}
+
+const validarCodigoRecuperacion = `-- name: ValidarCodigoRecuperacion :one
+SELECT id, correo, codigo, expira_en, usado, creado_en FROM password_resets 
+WHERE correo = $1 AND codigo = $2 AND usado = FALSE AND expira_en > NOW()
+LIMIT 1
+`
+
+type ValidarCodigoRecuperacionParams struct {
+	Correo string `json:"correo"`
+	Codigo string `json:"codigo"`
+}
+
+func (q *Queries) ValidarCodigoRecuperacion(ctx context.Context, arg ValidarCodigoRecuperacionParams) (PasswordReset, error) {
+	row := q.db.QueryRow(ctx, validarCodigoRecuperacion, arg.Correo, arg.Codigo)
+	var i PasswordReset
+	err := row.Scan(
+		&i.ID,
+		&i.Correo,
+		&i.Codigo,
+		&i.ExpiraEn,
+		&i.Usado,
+		&i.CreadoEn,
 	)
 	return i, err
 }

@@ -1,40 +1,26 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// src/services/api.ts
+export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+  
+  // LEER LA LLAVE CORRECTA
+  const token = typeof window !== 'undefined' ? localStorage.getItem('primex_token') : null;
 
-export async function apiFetch<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('primex_token')
-      : null;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
-
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     headers,
   });
 
-  const data = await response.json();
-
   if (!response.ok) {
-    throw {
-      status: response.status,
-      ...data,
-    };
+    const errorData = await response.json().catch(() => ({}));
+    throw { status: response.status, ...errorData };
   }
 
-  return data as T;
+  return response.json();
 }
-
-// Alias para compatibilidad
-export const fetchAPI = apiFetch;
