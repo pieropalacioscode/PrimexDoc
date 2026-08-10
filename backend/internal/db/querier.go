@@ -16,6 +16,8 @@ type Querier interface {
 	CheckActiveSubscription(ctx context.Context, usuarioID pgtype.UUID) (bool, error)
 	// queries/usuarios.sql name: CrearUsuario :one
 	CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error)
+	EliminarExamenGuardado(ctx context.Context, arg EliminarExamenGuardadoParams) error
+	EsExamenGuardado(ctx context.Context, arg EsExamenGuardadoParams) (bool, error)
 	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
 	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
 	GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenByIDRow, error)
@@ -27,10 +29,12 @@ type Querier interface {
 	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
 	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
 	GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodigoRecuperacionParams) (pgtype.UUID, error)
+	GuardarExamen(ctx context.Context, arg GuardarExamenParams) error
 	//intentos.sql:
 	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
 	//examenes.sql
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
+	ListarExamenesGuardados(ctx context.Context, usuarioID pgtype.UUID) ([]ListarExamenesGuardadosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
 	MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) error
 	ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error)

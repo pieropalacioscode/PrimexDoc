@@ -111,18 +111,10 @@ type Examene struct {
 	CreadoEn          pgtype.Timestamptz `json:"creado_en"`
 }
 
-type Intento struct {
-	ID                   pgtype.UUID        `json:"id"`
-	UsuarioID            pgtype.UUID        `json:"usuario_id"`
-	ExamenID             pgtype.UUID        `json:"examen_id"`
-	Modo                 string             `json:"modo"`
-	Puntaje              pgtype.Numeric     `json:"puntaje"`
-	TotalPreguntas       int32              `json:"total_preguntas"`
-	PreguntasCorrectas   pgtype.Int4        `json:"preguntas_correctas"`
-	PreguntasIncorrectas pgtype.Int4        `json:"preguntas_incorrectas"`
-	Estado               pgtype.Text        `json:"estado"`
-	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
-	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+type ExamenesGuardado struct {
+	UsuarioID pgtype.UUID        `json:"usuario_id"`
+	ExamenID  pgtype.UUID        `json:"examen_id"`
+	CreadoEn  pgtype.Timestamptz `json:"creado_en"`
 }
 
 type IntentoRespuesta struct {

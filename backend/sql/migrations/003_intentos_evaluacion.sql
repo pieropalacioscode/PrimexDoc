@@ -33,3 +33,19 @@ CREATE TABLE IF NOT EXISTS respuestas_intento (
 -- 4. Índices para optimizar consultas rápidas de historial
 CREATE INDEX IF NOT EXISTS idx_intentos_usuario ON intentos_examen(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_respuestas_intento ON respuestas_intento(intento_id);
+
+--5 
+-- 1. Si existe la tabla 'intentos' (vacía), bórrala para evitar confusiones
+DROP TABLE IF EXISTS intentos;
+
+-- 2. Asegurarnos que 'intentos_examen' tenga la columna de tiempo (que usas en SQLC)
+ALTER TABLE intentos_examen 
+ADD COLUMN IF NOT EXISTS tiempo_empleado_segundos INTEGER DEFAULT 0;
+
+-- 3. Crear la tabla de Favoritos (Fase 10)
+CREATE TABLE IF NOT EXISTS examenes_guardados (
+    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (usuario_id, examen_id)
+);

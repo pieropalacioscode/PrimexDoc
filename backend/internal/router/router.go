@@ -29,7 +29,7 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 	// Instanciamos todos los Handlers
 	examenH := handler.NewExamenHandler(queries)
 	authH := handler.NewAuthHandler(queries)
-	intentoH := handler.NewIntentoHandler(queries)
+	intentoH := handler.NewIntentoHandler(queries) // Usaremos este para historial
 	adminSubH := &handler.AdminSuscripcionesHandler{DB: queries}
 	userSubH := &handler.SuscripcionUsuarioHandler{DB: queries}
 	googleH := &handler.GoogleAuthHandler{DB: queries}
@@ -50,25 +50,27 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 			r.Get("/google/callback", googleH.GoogleCallback)
 		})
 
-		// 🔒 Rutas Protegidas (Requieren Login con JWT)
+		// 🔒 Rutas Protegidas
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 
-			// --- CATÁLOGO & SUSCRIPCIÓN DE USUARIO ---
 			r.Get("/examenes", examenH.ListarExamenes)
 			r.Get("/me/suscripcion", userSubH.GetMiSuscripcion)
 
-			// --- EXÁMENES (Protegido por Paywall) ---
 			r.With(auth.RequireSubscription(queries)).Get("/examenes/{id}", examenH.ObtenerExamenPorID)
 
-			// --- INTENTOS ---
+			// --- INTENTOS & HISTORIAL (Usamos intentoH) ---
 			r.Post("/intentos", intentoH.IniciarIntento)
-			r.Get("/intentos", intentoH.ListarHistorial)
-			r.Get("/intentos", intentoH.ListarIntentos)
+			r.Get("/intentos", intentoH.ListarHistorial) // Historial
 			r.Get("/intentos/{id}", intentoH.ObtenerIntentoPorID)
-			r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultadoDetalle)
+			r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultadoDetalle) // Detalle pedagógico
 			r.Post("/intentos/{id}/finalizar", intentoH.FinalizarIntento)
-			// r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultados) // 👈 NUEVA RUTA FASE 9
+
+			// --- FAVORITOS (Usamos examenH) ---
+			// Nota: Asegúrate de que estos métodos existan en tu examenH
+			r.Get("/favoritos", examenH.ListarFavoritos)
+			r.Post("/favoritos/{id}", examenH.ToggleFavorito)
+			r.Delete("/favoritos/{id}", examenH.EliminarFavorito)
 
 			// --- PANEL ADMINISTRADOR ---
 			r.Group(func(r chi.Router) {
