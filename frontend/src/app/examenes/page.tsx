@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { fetchAPI } from '@/services/api';
-import { ExamenCompleto, EstadoSuscripcion } from '@/types'; // Importamos ExamenCompleto centralizado
+import { ExamenCompleto, EstadoSuscripcion } from '@/types';
 import PaywallModal from '@/components/PaywallModal';
+
+// 1. IMPORTAR ICONO Y SERVICIO
+import { Bookmark } from 'lucide-react';
+import { toggleFavorito, getFavoritos } from '@/services/historialService';
 
 export default function ExamenesPage() {
   const { user, logout } = useAuth();
@@ -12,38 +16,50 @@ export default function ExamenesPage() {
   const [suscripcion, setSuscripcion] = useState<EstadoSuscripcion | null>(null);
   const [filtroArea, setFiltroArea] = useState<string>('Todos');
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Estado para controlar qué tarjetas tienen desplegada la descripción
+  // 2. ESTADO PARA IDs DE EXÁMENES FAVORITOS Y DESPLEGABLES
   const [descripcionesAbiertas, setDescripcionesAbiertas] = useState<Record<string, boolean>>({});
+  const [favoritosIds, setFavoritosIds] = useState<Set<string>>(new Set());
 
   // Estado para el Modal Paywall
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedExamenTitulo, setSelectedExamenTitulo] = useState<string>('');
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [dataExamenes, dataSub] = await Promise.all([
-          fetchAPI<ExamenCompleto[]>('/examenes'),
-          fetchAPI<EstadoSuscripcion>('/me/suscripcion').catch(() => ({
-            tiene_acceso: false,
-          })),
-        ]);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      // 3. CARGAR EXÁMENES, SUSCRIPCIÓN Y FAVORITOS EN PARALELO
+      const [dataExamenes, dataSub, dataFavs] = await Promise.all([
+        fetchAPI<ExamenCompleto[]>('/examenes'),
+        fetchAPI<EstadoSuscripcion>('/me/suscripcion').catch(() => ({ tiene_acceso: false })),
+        getFavoritos().catch(() => []), // Traemos los favoritos actuales del usuario
+      ]);
 
-        setExamenes(dataExamenes);
-        setSuscripcion(dataSub);
-      } catch (err) {
-        console.error('Error al cargar catálogo:', err);
-      } finally {
-        setLoading(false);
+      setExamenes(dataExamenes);
+      setSuscripcion(dataSub);
+      
+      // Guardamos solo los IDs para una búsqueda rápida (soporta id o examen_id según tu backend)
+      setFavoritosIds(new Set(dataFavs.map((f: any) => f.id || f.examen_id))); 
+    } catch (err: any) {
+      console.error('Error al cargar catálogo:', err);
+      // Si fue un 401, fetchAPI ya habrá redirigido. Para otros errores (p.ej. red):
+      if (err?.status !== 401) {
+        setErrorMsg(err?.error || 'Ocurrió un problema al obtener las pruebas. Por favor, intenta de nuevo.');
       }
+    } finally {
+      setLoading(false);
     }
-
-    loadData();
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   const areas = ['Todos', 'Inicial', 'Primaria', 'Secundaria', 'General'];
 
-  // Lógica de filtrado flexible (compara nivel, area o titulo)
+  // Lógica de filtrado flexible
   const examenesFiltrados = examenes.filter((ex) => {
     if (filtroArea === 'Todos') return true;
     const filtro = filtroArea.toLowerCase();
@@ -54,7 +70,6 @@ export default function ExamenesPage() {
     return nivel.includes(filtro) || area.includes(filtro) || titulo.includes(filtro);
   });
 
-  // Alternar el desplegable de descripción sin activar la navegación
   const toggleDescripcion = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDescripcionesAbiertas((prev) => ({
@@ -64,12 +79,30 @@ export default function ExamenesPage() {
   };
 
   const handleExamenClick = (examen: ExamenCompleto) => {
-    // Si es demo o el usuario ya tiene suscripción activa
     if (examen.es_demo || suscripcion?.tiene_acceso) {
       window.location.href = `/simulacro/${examen.id}`;
     } else {
       setSelectedExamenTitulo(examen.titulo);
       setIsModalOpen(true);
+    }
+  };
+
+  // 4. FUNCIÓN PARA MANEJAR EL CLIC EN EL MARCADOR
+  const handleToggleFav = async (e: React.MouseEvent, examenId: string) => {
+    e.stopPropagation(); // Evita que se abra el simulacro al marcar favorito
+    try {
+      await toggleFavorito(examenId);
+      setFavoritosIds((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(examenId)) {
+          newSet.delete(examenId);
+        } else {
+          newSet.add(examenId);
+        }
+        return newSet;
+      });
+    } catch (err) {
+      console.error("Error al guardar favorito", err);
     }
   };
 
@@ -126,7 +159,7 @@ export default function ExamenesPage() {
           <div className="absolute right-[-20px] bottom-[-20px] w-40 h-40 bg-white/5 rounded-full blur-2xl pointer-events-none" />
         </div>
 
-        {/* Filtros Píldora / Chips con Contadores */}
+        {/* Filtros Píldora */}
         <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 no-scrollbar">
           {areas.map((area) => {
             const count = area === 'Todos' 
@@ -161,8 +194,20 @@ export default function ExamenesPage() {
           })}
         </div>
 
-        {/* Estado de Carga */}
-        {loading ? (
+        {/* Estado de Error de Red / Carga */}
+        {errorMsg ? (
+          <div className="text-center py-12 bg-rose-50 border border-rose-200 rounded-2xl p-6 shadow-xs">
+            <p className="text-rose-800 font-semibold text-sm mb-1">⚠️ Error de conexión</p>
+            <p className="text-rose-600 text-xs mb-4">{errorMsg}</p>
+            <button
+              onClick={loadData}
+              className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition"
+            >
+              🔄 Reintentar
+            </button>
+          </div>
+        ) : loading ? (
+          /* Estado de Carga (Skeletons) */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3].map((i) => (
               <div key={i} className="bg-white p-5 rounded-2xl border border-slate-200 animate-pulse h-52 shadow-xs" />
@@ -184,8 +229,10 @@ export default function ExamenesPage() {
             {examenesFiltrados.map((ex) => {
               const tieneAccesoExamen = ex.es_demo || suscripcion?.tiene_acceso;
               const estaAbierto = !!descripcionesAbiertas[ex.id];
+              
+              // 5. CHEQUEAR SI ES FAVORITO
+              const esFavorito = favoritosIds.has(ex.id);
 
-              // Extracción de etiquetas desde los campos de la BD
               const tagNivel = ex.nivel || ex.area || 'EBR';
               const tagTipo = ex.tipo || (ex.titulo.toLowerCase().includes('nombramiento') ? 'Nombramiento' : 'Evaluación');
               const tagAnio = ex.anio || (ex.titulo.match(/\b(20\d{2})\b/)?.[0] ?? '');
@@ -201,9 +248,21 @@ export default function ExamenesPage() {
                       : 'border-slate-200 bg-slate-50/40 hover:border-amber-300'
                   }`}
                 >
+                  {/* 6. BOTÓN DE FAVORITO EN LA ESQUINA */}
+                  <button
+                    onClick={(e) => handleToggleFav(e, ex.id)}
+                    className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/90 shadow-sm border border-gray-100 hover:scale-110 transition-all"
+                    title={esFavorito ? "Quitar de mis guardados" : "Guardar para después"}
+                  >
+                    <Bookmark 
+                      size={18} 
+                      className={esFavorito ? "text-amber-500" : "text-slate-300"} 
+                      fill={esFavorito ? "currentColor" : "none"} 
+                    />
+                  </button>
+
                   <div>
-                    {/* Badge Acceso + Badge Tipo Examen */}
-                    <div className="flex items-center justify-between mb-3 gap-2">
+                    <div className="flex items-center justify-between mb-3 gap-2 pr-10">
                       <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-md uppercase tracking-wider">
                         {tagTipo}
                       </span>
@@ -219,12 +278,10 @@ export default function ExamenesPage() {
                       )}
                     </div>
 
-                    {/* Título del Examen */}
-                    <h3 className="font-extrabold text-slate-800 text-base leading-snug mb-3 hover:text-blue-600 transition-colors">
+                    <h3 className="font-extrabold text-slate-800 text-base leading-snug mb-3 hover:text-blue-600 transition-colors pr-2">
                       {ex.titulo}
                     </h3>
 
-                    {/* TAGS INFORMATIVOS (Nivel, Año, Duración) */}
                     <div className="flex flex-wrap items-center gap-1.5 mb-3">
                       <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/60">
                         📚 {tagNivel}
@@ -239,7 +296,6 @@ export default function ExamenesPage() {
                       </span>
                     </div>
 
-                    {/* BOTÓN Y SECCIÓN DESPLEGABLE DE DESCRIPCIÓN */}
                     {ex.descripcion && (
                       <div className="mt-2 mb-3">
                         <button
@@ -268,7 +324,6 @@ export default function ExamenesPage() {
                     )}
                   </div>
 
-                  {/* Pie de la Tarjeta con Botón de Acción */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-2">
                     <span className="text-[11px] text-slate-400 font-semibold">
                       MINEDU Oficial

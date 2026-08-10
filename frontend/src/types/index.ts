@@ -48,7 +48,7 @@ export interface TextoBase {
 export interface Opcion {
   id: string;
   pregunta_id?: string;
-  etiqueta?: string;                      // 'A', 'B', 'C', 'D'
+  etiqueta: string;                      // 'A', 'B', 'C', 'D'
   letra?: 'A' | 'B' | 'C' | 'D' | string; // Alias retrocompatible
   texto_opcion?: string;
   texto?: string;                         // Alias retrocompatible
@@ -86,7 +86,12 @@ export interface Pregunta {
   opciones?: Opcion[];
   alternativas?: Alternativa[] | Opcion[]; // Retrocompatibilidad
 }
-
+export interface ExamenResponse {
+  id: string;
+  titulo: string;
+  codigo_cuadernillo: string;
+  preguntas: Pregunta[];
+}
 export interface Examen {
   id: string;
   titulo: string;
@@ -107,6 +112,8 @@ export interface ExamenCompleto extends Omit<Examen, 'nivel' | 'tipo' | 'anio'> 
 }
 
 export interface ExamenDetalle extends Examen {
+  id:string;
+  titulo:string;
   textos_base?: TextoBase[];
   preguntas: Pregunta[];
 }

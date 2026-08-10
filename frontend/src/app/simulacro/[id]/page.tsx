@@ -1,3 +1,4 @@
+//frontend > src > app > simulacro > [id] > page.tsx 
 'use client';
 
 import React, { useEffect, useState, useRef, use } from 'react';
@@ -21,6 +22,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
+import { QuestionText, InlineText } from '../../../components/exam/QuestionText';
 
 interface SimulacroPageProps {
   params: Promise<{ id: string }> | { id: string };
@@ -454,8 +456,8 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
                   </span>
                 </button>
                 {mostrarTextoBase && (
-                  <div className="p-5 sm:p-6 text-slate-800 text-sm sm:text-base leading-relaxed whitespace-pre-line max-h-[40vh] overflow-y-auto">
-                    {textoBaseActual.contenido}
+                  <div className="p-5 sm:p-6 text-slate-800 text-sm sm:text-base max-h-[40vh] overflow-y-auto">
+                    <QuestionText text={textoBaseActual.contenido} className="leading-relaxed" />
                   </div>
                 )}
               </div>
@@ -472,10 +474,11 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
               </div>
             )}
 
-            {/* Enunciado */}
-            <h2 className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 leading-snug mb-8">
-              {preguntaActual.texto_pregunta || (preguntaActual as any).enunciado}
-            </h2>
+            {/* Enunciado: div+role="heading" en vez de <h2>, porque un <h2> no
+                admite <ul> y el enunciado puede traer premisas en viñetas */}
+            <div role="heading" aria-level={2} className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 mb-8">
+              <QuestionText text={preguntaActual.texto_pregunta || (preguntaActual as any).enunciado} className="leading-snug" />
+            </div>
 
             {/* Alternativas */}
             <div className="space-y-3 sm:space-y-4">
@@ -505,7 +508,7 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
                       {etiqueta}
                     </span>
                     <span className={`flex-1 text-sm sm:text-base leading-relaxed ${seleccionada ? 'text-blue-950 font-medium' : 'text-slate-700'}`}>
-                      {textoOpcion}
+                      <InlineText text={textoOpcion} />
                     </span>
                     {seleccionada && <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />}
                   </button>
