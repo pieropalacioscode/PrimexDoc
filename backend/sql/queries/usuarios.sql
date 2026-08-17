@@ -33,3 +33,8 @@ UPDATE password_resets SET usado = TRUE WHERE id = $1;
 
 -- name: ActualizarContrasena :exec
 UPDATE usuarios SET contrasena_hash = $2, actualizado_en = NOW() WHERE correo = $1;
+
+-- name: GetUsuarioByID :one
+SELECT id, correo, nombre_completo, rol, suscripcion_hasta
+FROM usuarios
+WHERE id = $1;

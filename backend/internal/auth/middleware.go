@@ -3,11 +3,14 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/alienwarecode/docent-primex-api/internal/db" // ¡Esta es la importación que faltaba!
+	"github.com/alienwarecode/docent-primex-api/internal/db"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -91,7 +94,6 @@ type PaywallError struct {
 	ActionURL string `json:"action_url"`
 }
 
-// RequireSubscription intercepta intentos de acceso a exámenes premium
 func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -101,14 +103,36 @@ func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 				return
 			}
 
-			var userUUID pgtype.UUID
-			if err := userUUID.Scan(userIDStr); err != nil {
+			// 2. CORRECCIÓN DE UUID
+			parsedID, err := uuid.Parse(userIDStr)
+			if err != nil {
 				http.Error(w, `{"error": "ID de usuario inválido"}`, http.StatusBadRequest)
 				return
 			}
+			userUUID := pgtype.UUID{Bytes: parsedID, Valid: true}
 
-			hasActiveSub, err := queries.CheckActiveSubscription(r.Context(), userUUID)
-			if err != nil || !hasActiveSub {
+			usuario, err := queries.GetUsuarioByID(r.Context(), userUUID)
+			if err != nil {
+				http.Error(w, `{"error": "Error al verificar permisos"}`, http.StatusInternalServerError)
+				return
+			}
+
+			// 3. CORRECCIÓN DE TIPO: pgtype.Text requiere .String para comparar
+			if usuario.Rol.String == "admin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Verificación de fecha de vencimiento
+			ahora := time.Now().UTC()
+			fechaVencimiento := usuario.SuscripcionHasta.Time.UTC()
+			
+			estaActivo := usuario.SuscripcionHasta.Valid && fechaVencimiento.After(ahora)
+
+			if !estaActivo {
+				fmt.Printf("⚠️ ACCESO DENEGADO: %s | Vence: %s\n", 
+					usuario.Correo, fechaVencimiento.Format("2006-01-02"))
+
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 

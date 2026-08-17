@@ -29,3 +29,18 @@ SELECT id, pregunta_id, etiqueta, texto_opcion, es_correcta
 FROM opciones
 WHERE pregunta_id = ANY($1::uuid[])
 ORDER BY etiqueta ASC;
+
+-- name: GetExamenDetalleEntrenamiento :many
+SELECT 
+    e.id AS examen_id, e.titulo, e.duracion_minutos,
+    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen, 
+    p.explicacion, p.subprueba, p.componente, p.texto_base_id,
+    o.id AS opcion_id, o.etiqueta, o.texto_opcion, o.es_correcta,
+    t.id AS texto_id, t.codigo_texto_base, -- <--- AGREGAR ESTA LÍNEA
+    t.titulo AS texto_titulo, t.contenido AS texto_contenido, t.url_imagen AS texto_imagen
+FROM examenes e
+JOIN preguntas p ON e.id = p.examen_id
+JOIN opciones o ON p.id = o.pregunta_id
+LEFT JOIN textos_base t ON p.texto_base_id = t.id
+WHERE e.id = $1
+ORDER BY p.numero_pregunta, o.etiqueta;

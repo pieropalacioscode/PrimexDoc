@@ -1,17 +1,19 @@
+//internal/handler/examenes.go
 package handler
 
 import (
 	"encoding/json"
 	"net/http"
-	"os"      // NUEVO: Para leer variables de entorno
-	"strings" // NUEVO: Para manipular strings
-
+	"os"
+	"strings"
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgtype" // IMPORTANTE: Agregado para los errores de pgtype
 
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
+
 )
 
 // NUEVO: Función auxiliar interna para formatear URLs de imágenes
@@ -114,15 +116,15 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 	}
 
 	textosDTO := make([]TextoBaseDTO, 0, len(textosDB))
-	for _, t := range textosDB {
-		tID, _ := uuid.FromBytes(t.ID.Bytes[:])
-		textosDTO = append(textosDTO, TextoBaseDTO{
-			ID:              tID,
-			CodigoTextoBase: t.CodigoTextoBase,
-			Titulo:          t.Titulo.String,
-			Contenido:       t.Contenido,
-		})
-	}
+    for _, t := range textosDB {
+        tID, _ := uuid.FromBytes(t.ID.Bytes[:])
+        textosDTO = append(textosDTO, TextoBaseDTO{
+            ID:              tID.String(), // CAMBIO: Agregado .String()
+            CodigoTextoBase: t.CodigoTextoBase, // Ahora sí existe en el DTO
+            Titulo:          t.Titulo.String,
+            Contenido:       t.Contenido,
+        })
+    }
 
 	preguntasDB, err := h.queries.GetPreguntasByExamenID(ctx, pgUUID)
 	if err != nil {
@@ -205,24 +207,27 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ExamenHandler) ListarFavoritos(w http.ResponseWriter, r *http.Request) {
-	userIDStr, ok := auth.GetUserID(r.Context())
-	if !ok {
-		http.Error(w, "No autorizado", http.StatusUnauthorized)
-		return
-	}
+    userIDStr, ok := auth.GetUserID(r.Context())
+    if !ok {
+        w.WriteHeader(http.StatusUnauthorized)
+        return
+    }
 
-	userID, _ := uuid.Parse(userIDStr)
-	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+    u, _ := uuid.Parse(userIDStr)
+    pgUserID := pgtype.UUID{Bytes: u, Valid: true}
 
-	favs, err := h.queries.ListarExamenesGuardados(r.Context(), pgUserID)
-	if err != nil {
-		http.Error(w, "Error al obtener favoritos", http.StatusInternalServerError)
-		return
-	}
+    favs, err := h.queries.ListarExamenesGuardados(r.Context(), pgUserID)
+    if err != nil {
+        // Si hay error aquí, imprimelo en la consola del backend para ver qué dice
+        fmt.Printf("Error DB Favoritos: %v\n", err)
+        w.WriteHeader(http.StatusInternalServerError)
+        return
+    }
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(favs)
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(favs)
 }
+
 
 func (h *ExamenHandler) ToggleFavorito(w http.ResponseWriter, r *http.Request) {
 	// USAR EL HELPER DEL MIDDLEWARE
@@ -304,4 +309,100 @@ func (h *ExamenHandler) EliminarFavorito(w http.ResponseWriter, r *http.Request)
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "Examen eliminado de favoritos correctamente",
 	})
+}
+
+
+func (h *ExamenHandler) GetExamenParaEntrenamiento(w http.ResponseWriter, r *http.Request) {
+	examenIDStr := chi.URLParam(r, "id")
+	examenUUID, err := uuid.Parse(examenIDStr)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "ID de examen inválido"})
+		return
+	}
+
+	rows, err := h.queries.GetExamenDetalleEntrenamiento(r.Context(), pgtype.UUID{Bytes: examenUUID, Valid: true})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error al obtener datos"})
+		return
+	}
+
+	if len(rows) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Examen no encontrado"})
+		return
+	}
+
+	exID, _ := uuid.FromBytes(rows[0].ExamenID.Bytes[:])
+
+	response := ExamenEntrenamientoResponse{
+		ID:              exID.String(),
+		Titulo:          rows[0].Titulo,
+		DuracionMinutos: rows[0].DuracionMinutos,
+		TextosBase:      make(map[string]TextoBaseDTO),
+		Preguntas:       []PreguntaEntrenamientoDTO{},
+	}
+
+	preguntaMap := make(map[uuid.UUID]*PreguntaEntrenamientoDTO)
+	var ordenPreguntas []uuid.UUID
+
+	for _, row := range rows {
+		if row.TextoID.Valid {
+			tID, _ := uuid.FromBytes(row.TextoID.Bytes[:])
+			tIDStr := tID.String()
+			if _, exists := response.TextosBase[tIDStr]; !exists {
+				response.TextosBase[tIDStr] = TextoBaseDTO{
+					ID:              tIDStr,
+					CodigoTextoBase: row.CodigoTextoBase.String,
+					Titulo:          row.TextoTitulo.String,
+					Contenido:       row.TextoContenido.String, // CORRECCIÓN: Agregado .String
+					ImagenURL:       formatearURLImagen(row.TextoImagen.String),
+				}
+			}
+		}
+
+		pID, _ := uuid.FromBytes(row.PreguntaID.Bytes[:])
+		if _, exists := preguntaMap[pID]; !exists {
+			var textoBaseIDPtr *string
+			if row.TextoBaseID.Valid {
+				u, _ := uuid.FromBytes(row.TextoBaseID.Bytes[:])
+				s := u.String()
+				textoBaseIDPtr = &s
+			}
+
+			p := &PreguntaEntrenamientoDTO{
+				ID:          pID.String(),
+				Numero:      row.NumeroPregunta,
+				Texto:       row.TextoPregunta,
+				ImagenURL:   formatearURLImagen(row.PreguntaImagen.String),
+				Explicacion: row.Explicacion.String,
+				Subprueba:   row.Subprueba.String,
+				Componente:  row.Componente.String,
+				TextoBaseID: textoBaseIDPtr,
+				Opciones:    []OpcionEntrenamientoDTO{},
+			}
+			preguntaMap[pID] = p
+			ordenPreguntas = append(ordenPreguntas, pID)
+		}
+
+		oID, _ := uuid.FromBytes(row.OpcionID.Bytes[:])
+		preguntaMap[pID].Opciones = append(preguntaMap[pID].Opciones, OpcionEntrenamientoDTO{
+			ID:         oID.String(),
+			Etiqueta:   row.Etiqueta,
+			Texto:      row.TextoOpcion,
+			EsCorrecta: row.EsCorrecta,
+		})
+	}
+
+	for _, id := range ordenPreguntas {
+		response.Preguntas = append(response.Preguntas, *preguntaMap[id])
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }

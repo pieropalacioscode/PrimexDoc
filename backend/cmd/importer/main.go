@@ -38,25 +38,43 @@ func main() {
 	}
 	defer db.Close()
 
-	// 🛠️ AUTOMIGRACIÓN: Crear la tabla textos_base y columna texto_base_id si no existen
+	// 🛠️ AUTOMIGRACIÓN: Crear/Actualizar tablas y agregar nuevas columnas si no existen
 	ddlAutoMigrate := `
-		CREATE TABLE IF NOT EXISTS textos_base (
-			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-			examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
-			codigo_texto_base VARCHAR(50) NOT NULL,
-			titulo VARCHAR(255),
-			contenido TEXT NOT NULL,
-			creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
-		);
+	CREATE TABLE IF NOT EXISTS textos_base (
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+		examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
+		codigo_texto_base VARCHAR(50) NOT NULL,
+		titulo VARCHAR(255),
+		contenido TEXT NOT NULL,
+		url_imagen TEXT,
+		creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+		CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
+	);
 
-		CREATE INDEX IF NOT EXISTS idx_textos_base_examen ON textos_base(examen_id);
+	CREATE INDEX IF NOT EXISTS idx_textos_base_examen ON textos_base(examen_id);
 
-		ALTER TABLE preguntas 
-		ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL;
+	-- Agregar nuevas columnas a examenes
+	ALTER TABLE examenes 
+		ADD COLUMN IF NOT EXISTS acceso_pdf VARCHAR(50),
+		ADD COLUMN IF NOT EXISTS url_pdf_examen TEXT,
+		ADD COLUMN IF NOT EXISTS url_pdf_claves TEXT,
+		ADD COLUMN IF NOT EXISTS completo BOOLEAN DEFAULT TRUE,
+		ADD COLUMN IF NOT EXISTS fuente_habilidades_generales VARCHAR(255),
+		ADD COLUMN IF NOT EXISTS url_origen_habilidades_generales TEXT;
 
-		CREATE INDEX IF NOT EXISTS idx_preguntas_texto_base ON preguntas(texto_base_id);
+	-- Agregar nuevas columnas a textos_base
+	ALTER TABLE textos_base 
+		ADD COLUMN IF NOT EXISTS url_imagen TEXT;
+
+	-- Agregar nuevas columnas a preguntas
+	ALTER TABLE preguntas 
+		ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL,
+		ADD COLUMN IF NOT EXISTS subprueba VARCHAR(100),
+		ADD COLUMN IF NOT EXISTS componente VARCHAR(100);
+
+	CREATE INDEX IF NOT EXISTS idx_preguntas_texto_base ON preguntas(texto_base_id);
 	`
+
 	_, err = db.Exec(ddlAutoMigrate)
 	if err != nil {
 		log.Fatalf("❌ Error preparando las tablas en la base de datos: %v", err)
@@ -73,6 +91,9 @@ func main() {
 	// HOJA 1: "examenes"
 	// ----------------------------------------------------
 	rowsExamenes, err := f.GetRows("examenes")
+	if err != nil {
+		rowsExamenes, err = f.GetRows("examen")
+	}
 	if err != nil || len(rowsExamenes) < 2 {
 		log.Fatalf("❌ Error leyendo la hoja 'examenes' o está vacía")
 	}
@@ -95,37 +116,62 @@ func main() {
 	anioExamen, _ := strconv.Atoi(colExamen["anio"])
 	duracionMinutos, _ := strconv.Atoi(colExamen["duracion_minutos"])
 
-	rowsPreguntas, err := f.GetRows("preguntas")
-	if err != nil {
-		log.Fatalf("❌ Error leyendo la hoja 'preguntas'")
+	// Campos adicionales de examenes
+	accesoPdf := colExamen["acceso_pdf"]
+	urlPdfExamen := colExamen["url_pdf_examen"]
+	urlPdfClaves := colExamen["url_pdf_claves"]
+	fuenteHabilidades := colExamen["fuente_habilidades_generales"]
+	urlOrigenHabilidades := colExamen["url_origen_habilidades_generales"]
+
+	completoStr := strings.ToLower(colExamen["completo"])
+	completo := true
+	if completoStr == "false" || completoStr == "0" || completoStr == "no" {
+		completo = false
 	}
-	totalPreguntas := len(rowsPreguntas) - 1
 
 	var examenID string
 	queryExamen := `
 		INSERT INTO examenes (
-			titulo, codigo_cuadernillo, descripcion, nivel, tipo, anio, total_preguntas, duracion_minutos
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (codigo_cuadernillo) DO UPDATE SET
+			titulo, codigo_cuadernillo, descripcion, nivel, tipo, anio, duracion_minutos,
+			acceso_pdf, url_pdf_examen, url_pdf_claves, completo,
+			fuente_habilidades_generales, url_origen_habilidades_generales
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (codigo_cuadernillo)
+		DO UPDATE SET
 			titulo = EXCLUDED.titulo,
 			descripcion = EXCLUDED.descripcion,
 			nivel = EXCLUDED.nivel,
 			tipo = EXCLUDED.tipo,
 			anio = EXCLUDED.anio,
-			total_preguntas = EXCLUDED.total_preguntas,
-			duracion_minutos = EXCLUDED.duracion_minutos
+			duracion_minutos = EXCLUDED.duracion_minutos,
+			acceso_pdf = EXCLUDED.acceso_pdf,
+			url_pdf_examen = EXCLUDED.url_pdf_examen,
+			url_pdf_claves = EXCLUDED.url_pdf_claves,
+			completo = EXCLUDED.completo,
+			fuente_habilidades_generales = EXCLUDED.fuente_habilidades_generales,
+			url_origen_habilidades_generales = EXCLUDED.url_origen_habilidades_generales
 		RETURNING id;
 	`
-	err = tx.QueryRow(queryExamen, tituloExamen, codigoCuadernillo, descripcionExamen, nivelExamen, tipoExamen, anioExamen, totalPreguntas, duracionMinutos).Scan(&examenID)
+
+	err = tx.QueryRow(
+		queryExamen,
+		tituloExamen, codigoCuadernillo, descripcionExamen, nivelExamen, tipoExamen, anioExamen, duracionMinutos,
+		accesoPdf, urlPdfExamen, urlPdfClaves, completo, fuenteHabilidades, urlOrigenHabilidades,
+	).Scan(&examenID)
+
 	if err != nil {
 		log.Fatalf("❌ Error guardando el examen: %v", err)
 	}
 	fmt.Printf("✅ Examen '%s' guardado con ID: %s\n", codigoCuadernillo, examenID)
 
 	// ----------------------------------------------------
-	// HOJA 2: "textos_base"
+	// HOJA 2: "texto_base" o "textos_base"
 	// ----------------------------------------------------
-	rowsTextos, err := f.GetRows("textos_base")
+	rowsTextos, err := f.GetRows("texto_base")
+	if err != nil {
+		rowsTextos, err = f.GetRows("textos_base")
+	}
+
 	mapaTextos := make(map[string]string)
 
 	if err == nil && len(rowsTextos) > 1 {
@@ -141,23 +187,30 @@ func main() {
 				continue
 			}
 
+			codCuadRef := getVal(row, mapHeaderT, "codigo_cuadernillo")
+			if codCuadRef != "" && codCuadRef != codigoCuadernillo {
+				continue
+			}
+
 			codTexto := getVal(row, mapHeaderT, "codigo_texto_base")
 			if codTexto == "" {
 				continue
 			}
 			titTexto := getVal(row, mapHeaderT, "titulo")
 			contenido := getVal(row, mapHeaderT, "contenido")
+			urlImgTexto := getVal(row, mapHeaderT, "url_imagen")
 
 			var textoID string
 			queryTexto := `
-				INSERT INTO textos_base (examen_id, codigo_texto_base, titulo, contenido)
-				VALUES ($1, $2, $3, $4)
+				INSERT INTO textos_base (examen_id, codigo_texto_base, titulo, contenido, url_imagen)
+				VALUES ($1, $2, $3, $4, $5)
 				ON CONFLICT (examen_id, codigo_texto_base) DO UPDATE SET
 					titulo = EXCLUDED.titulo,
-					contenido = EXCLUDED.contenido
+					contenido = EXCLUDED.contenido,
+					url_imagen = EXCLUDED.url_imagen
 				RETURNING id;
 			`
-			err = tx.QueryRow(queryTexto, examenID, codTexto, titTexto, contenido).Scan(&textoID)
+			err = tx.QueryRow(queryTexto, examenID, codTexto, titTexto, contenido, urlImgTexto).Scan(&textoID)
 			if err != nil {
 				log.Fatalf("❌ Error guardando texto_base '%s': %v", codTexto, err)
 			}
@@ -169,6 +222,14 @@ func main() {
 	// ----------------------------------------------------
 	// HOJA 3: "preguntas" y "opciones"
 	// ----------------------------------------------------
+	rowsPreguntas, err := f.GetRows("preguntas")
+	if err != nil {
+		rowsPreguntas, err = f.GetRows("pregunta")
+	}
+	if err != nil || len(rowsPreguntas) < 2 {
+		log.Fatalf("❌ Error leyendo la hoja 'preguntas' o está vacía")
+	}
+
 	headerPreguntas := rowsPreguntas[0]
 	mapHeaderP := make(map[string]int)
 	for i, h := range headerPreguntas {
@@ -184,34 +245,48 @@ func main() {
 			continue
 		}
 
+		codCuadRef := getVal(row, mapHeaderP, "codigo_cuadernillo")
+		if codCuadRef != "" && codCuadRef != codigoCuadernillo {
+			continue
+		}
+
 		numPregunta, _ := strconv.Atoi(getVal(row, mapHeaderP, "numero_pregunta"))
+		if numPregunta == 0 {
+			continue
+		}
+
 		codTextoRef := getVal(row, mapHeaderP, "codigo_texto_base")
 		textoPregunta := getVal(row, mapHeaderP, "texto_pregunta")
 		urlImagen := getVal(row, mapHeaderP, "url_imagen")
 		explicacion := getVal(row, mapHeaderP, "explicacion")
 		claveCorrecta := strings.ToUpper(getVal(row, mapHeaderP, "clave_correcta"))
+		subprueba := getVal(row, mapHeaderP, "subprueba")
+		componente := getVal(row, mapHeaderP, "componente")
 
 		var textoBaseID sql.NullString
 		if codTextoRef != "" {
 			idFound, ok := mapaTextos[codTextoRef]
 			if !ok {
-				log.Fatalf("❌ Error de Integridad: La pregunta %d usa el texto '%s' pero no existe en la hoja 'textos_base'", numPregunta, codTextoRef)
+				log.Fatalf("❌ Error de Integridad: La pregunta %d usa el texto '%s' pero no existe en la hoja 'texto_base'", numPregunta, codTextoRef)
 			}
 			textoBaseID = sql.NullString{String: idFound, Valid: true}
 		}
 
 		var preguntaID string
 		queryPregunta := `
-			INSERT INTO preguntas (examen_id, numero_pregunta, texto_base_id, texto_pregunta, url_imagen, explicacion)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO preguntas (
+				examen_id, numero_pregunta, texto_base_id, texto_pregunta, url_imagen, explicacion, subprueba, componente
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (examen_id, numero_pregunta) DO UPDATE SET
 				texto_base_id = EXCLUDED.texto_base_id,
 				texto_pregunta = EXCLUDED.texto_pregunta,
 				url_imagen = EXCLUDED.url_imagen,
-				explicacion = EXCLUDED.explicacion
+				explicacion = EXCLUDED.explicacion,
+				subprueba = EXCLUDED.subprueba,
+				componente = EXCLUDED.componente
 			RETURNING id;
 		`
-		err = tx.QueryRow(queryPregunta, examenID, numPregunta, textoBaseID, textoPregunta, urlImagen, explicacion).Scan(&preguntaID)
+		err = tx.QueryRow(queryPregunta, examenID, numPregunta, textoBaseID, textoPregunta, urlImagen, explicacion, subprueba, componente).Scan(&preguntaID)
 		if err != nil {
 			log.Fatalf("❌ Error guardando la pregunta %d: %v", numPregunta, err)
 		}
@@ -222,6 +297,7 @@ func main() {
 			"B": getVal(row, mapHeaderP, "opcion_b"),
 			"C": getVal(row, mapHeaderP, "opcion_c"),
 			"D": getVal(row, mapHeaderP, "opcion_d"),
+			"E": getVal(row, mapHeaderP, "opcion_e"),
 		}
 
 		for etiqueta, textoOpcion := range opciones {
@@ -245,13 +321,20 @@ func main() {
 		}
 	}
 
+	// Actualizar total_preguntas con la cantidad real de preguntas importadas
+	_, err = tx.Exec("UPDATE examenes SET total_preguntas = $1 WHERE id = $2", preguntasCount, examenID)
+	if err != nil {
+		log.Fatalf("❌ Error actualizando total_preguntas del examen: %v", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		log.Fatalf("❌ Error finalizando transacción (Commit): %v", err)
 	}
 
 	fmt.Println("\n🚀 ¡IMPORTACIÓN EN GO COMPLETADA CON ÉXITO!")
-	fmt.Printf("   • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
-	fmt.Printf("   • Opciones insertadas: %d\n", opcionesCount)
+	fmt.Printf(" • Examen ID: %s (%s)\n", examenID, codigoCuadernillo)
+	fmt.Printf(" • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
+	fmt.Printf(" • Opciones insertadas: %d\n", opcionesCount)
 }
 
 func getVal(row []string, mapHeader map[string]int, key string) string {

@@ -1,3 +1,4 @@
+//internal/handler/dto.go
 package handler
 
 import (
@@ -28,12 +29,12 @@ type ExamenResumenDTO struct {
 }
 
 type TextoBaseDTO struct {
-	ID              uuid.UUID `json:"id"`
-	CodigoTextoBase string    `json:"codigo_texto_base"`
-	Titulo          string    `json:"titulo,omitempty"`
-	Contenido       string    `json:"contenido"`
+    ID              string `json:"id"`
+    CodigoTextoBase string `json:"codigo_texto_base"` // Agregamos esto
+    Titulo          string `json:"titulo"`
+    Contenido       string `json:"contenido"`
+    ImagenURL       string `json:"imagen_url,omitempty"`
 }
-
 type OpcionDTO struct {
 	ID          uuid.UUID `json:"id"`
 	PreguntaID  uuid.UUID `json:"pregunta_id,omitempty"`
@@ -113,4 +114,33 @@ type DetalleRespuestaRetroalimentacionDTO struct {
 type ReporteIntentoDetalleDTO struct {
 	Intento  IntentoResumenDTO                      `json:"intento"`
 	Detalles []DetalleRespuestaRetroalimentacionDTO `json:"detalles"`
+}
+
+
+type OpcionEntrenamientoDTO struct {
+	ID         string `json:"id"`
+	Etiqueta   string `json:"etiqueta"`
+	Texto      string `json:"texto_opcion"`
+	EsCorrecta bool   `json:"es_correcta"`
+}
+
+type PreguntaEntrenamientoDTO struct {
+	ID          string                   `json:"id"`
+	Numero      int32                    `json:"numero"`
+	Texto       string                   `json:"texto_pregunta"`
+	ImagenURL   string                   `json:"url_imagen,omitempty"`
+	Explicacion string                   `json:"explicacion"`
+	Subprueba   string                   `json:"subprueba"`
+	Componente  string                   `json:"componente"`
+	TextoBaseID *string                  `json:"texto_base_id,omitempty"`
+	Opciones    []OpcionEntrenamientoDTO `json:"opciones"`
+}
+
+type ExamenEntrenamientoResponse struct {
+	ID              string                     `json:"id"`
+	Titulo          string                     `json:"titulo"`
+	DuracionMinutos int32                      `json:"duracion_minutos"`
+	// IMPORTANTE: 'textos_base' en minúsculas para que el front lo encuentre
+	TextosBase      map[string]TextoBaseDTO    `json:"textos_base"` 
+	Preguntas       []PreguntaEntrenamientoDTO `json:"preguntas"`
 }

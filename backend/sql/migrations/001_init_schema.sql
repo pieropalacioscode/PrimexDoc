@@ -1,62 +1,69 @@
--- 001_init_schema.sql Habilitar extensión UUID para identificadores seguros
+-- Habilitar extensión UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Tabla de Usuarios (Docentes)
+-- 1. Usuarios
 CREATE TABLE usuarios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     correo VARCHAR(255) UNIQUE NOT NULL,
     contrasena_hash VARCHAR(255) NOT NULL,
     nombre_completo VARCHAR(255) NOT NULL,
     rol VARCHAR(50) DEFAULT 'usuario' CHECK (rol IN ('usuario', 'admin')),
-    suscripcion_hasta TIMESTAMP WITH TIME ZONE, -- Control de acceso 24/7 (S/ 20 PEN)
+    suscripcion_hasta TIMESTAMP WITH TIME ZONE,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     actualizado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Tabla de Simulacros / Exámenes Oficiales
+-- 2. Exámenes (Actualizado con columnas para PDF e Importador)
 CREATE TABLE examenes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     titulo VARCHAR(255) NOT NULL,
-    codigo_cuadernillo VARCHAR(100) UNIQUE NOT NULL, -- Obligatorio para trazabilidad
+    codigo_cuadernillo VARCHAR(100) UNIQUE NOT NULL,
     descripcion TEXT,
     nivel VARCHAR(50) NOT NULL CHECK (nivel IN ('inicial', 'primaria')),
-    tipo VARCHAR(50) NOT NULL DEFAULT 'nombramiento' CHECK (tipo IN ('nombramiento', 'ascenso')),
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('nombramiento', 'ascenso')),
     anio INT NOT NULL,
     total_preguntas INT NOT NULL DEFAULT 60,
     duracion_minutos INT NOT NULL DEFAULT 180,
+    -- Nuevas columnas solicitadas por el importador
+    acceso_pdf VARCHAR(50),               -- 'libre', 'premium'
+    url_pdf_examen TEXT,                  -- Link a Cloudflare R2
+    url_pdf_claves TEXT,                  -- Link a Cloudflare R2
+    completo BOOLEAN DEFAULT TRUE,
+    fuente_habilidades_generales VARCHAR(255),
+    url_origen_habilidades_generales TEXT,
     activo BOOLEAN DEFAULT TRUE,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_examenes_filtro ON examenes(nivel, tipo, anio);
 
--- 3. Tabla de Textos Base / Casos Pedagógicos Compartidos
+-- 3. Textos Base (Actualizado con url_imagen)
 CREATE TABLE textos_base (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
     codigo_texto_base VARCHAR(50) NOT NULL,
     titulo VARCHAR(255),
     contenido TEXT NOT NULL,
+    url_imagen TEXT, -- Para casos pedagógicos con infografías
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
 );
-CREATE INDEX idx_textos_base_examen ON textos_base(examen_id);
 
--- 4. Tabla de Preguntas del Examen
+-- 4. Preguntas (Actualizado con subprueba y componente)
 CREATE TABLE preguntas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     examen_id UUID REFERENCES examenes(id) ON DELETE CASCADE,
-    texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL, -- FK a la lectura compartida
+    texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL,
     numero_pregunta INT NOT NULL,
     texto_pregunta TEXT NOT NULL,
-    url_imagen TEXT, -- Cloudflare R2
+    url_imagen TEXT,
     explicacion TEXT,
+    subprueba VARCHAR(100), -- Ej: 'Conocimientos Pedagógicos'
+    componente VARCHAR(100), -- Ej: 'Comprensión Lectora'
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_pregunta_por_examen UNIQUE (examen_id, numero_pregunta)
 );
-CREATE INDEX idx_preguntas_examen ON preguntas(examen_id);
-CREATE INDEX idx_preguntas_texto_base ON preguntas(texto_base_id);
 
--- 5. Tabla de Opciones / Alternativas
+-- 5. Opciones (Etiqueta A, B, C)
 CREATE TABLE opciones (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     pregunta_id UUID REFERENCES preguntas(id) ON DELETE CASCADE,
@@ -65,9 +72,8 @@ CREATE TABLE opciones (
     es_correcta BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT unique_etiqueta_por_pregunta UNIQUE (pregunta_id, etiqueta)
 );
-CREATE INDEX idx_opciones_pregunta ON opciones(pregunta_id);
 
--- 6. Tabla de Intentos (Historial)
+-- 6. Intentos
 CREATE TABLE intentos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     usuario_id UUID REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -81,9 +87,8 @@ CREATE TABLE intentos (
     iniciado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     finalizado_en TIMESTAMP WITH TIME ZONE
 );
-CREATE INDEX idx_intentos_usuario_estado ON intentos(usuario_id, estado);
 
--- 7. Tabla de Respuestas por Intento
+-- 7. Respuestas por Intento
 CREATE TABLE intento_respuestas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     intento_id UUID REFERENCES intentos(id) ON DELETE CASCADE,
@@ -93,8 +98,16 @@ CREATE TABLE intento_respuestas (
     respondido_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_intento_pregunta UNIQUE (intento_id, pregunta_id)
 );
-CREATE INDEX idx_intento_respuestas_intento ON intento_respuestas(intento_id);
 
+-- 8. Favoritos (Fase 10 - Indispensable)
+CREATE TABLE examenes_guardados (
+    usuario_id UUID REFERENCES usuarios(id) ON DELETE CASCADE,
+    examen_id UUID REFERENCES examenes(id) ON DELETE CASCADE,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (usuario_id, examen_id)
+);
+
+-- 9. Recuperación de Contraseña
 CREATE TABLE password_resets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     correo VARCHAR(255) NOT NULL,
@@ -103,4 +116,3 @@ CREATE TABLE password_resets (
     usado BOOLEAN DEFAULT FALSE,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_password_resets_valido ON password_resets(correo, codigo) WHERE usado = FALSE;

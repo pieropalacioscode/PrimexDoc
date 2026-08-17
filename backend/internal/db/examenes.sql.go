@@ -47,6 +47,86 @@ func (q *Queries) GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenB
 	return i, err
 }
 
+const getExamenDetalleEntrenamiento = `-- name: GetExamenDetalleEntrenamiento :many
+SELECT 
+    e.id AS examen_id, e.titulo, e.duracion_minutos,
+    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen, 
+    p.explicacion, p.subprueba, p.componente, p.texto_base_id,
+    o.id AS opcion_id, o.etiqueta, o.texto_opcion, o.es_correcta,
+    t.id AS texto_id, t.codigo_texto_base, -- <--- AGREGAR ESTA LÍNEA
+    t.titulo AS texto_titulo, t.contenido AS texto_contenido, t.url_imagen AS texto_imagen
+FROM examenes e
+JOIN preguntas p ON e.id = p.examen_id
+JOIN opciones o ON p.id = o.pregunta_id
+LEFT JOIN textos_base t ON p.texto_base_id = t.id
+WHERE e.id = $1
+ORDER BY p.numero_pregunta, o.etiqueta
+`
+
+type GetExamenDetalleEntrenamientoRow struct {
+	ExamenID        pgtype.UUID `json:"examen_id"`
+	Titulo          string      `json:"titulo"`
+	DuracionMinutos int32       `json:"duracion_minutos"`
+	PreguntaID      pgtype.UUID `json:"pregunta_id"`
+	NumeroPregunta  int32       `json:"numero_pregunta"`
+	TextoPregunta   string      `json:"texto_pregunta"`
+	PreguntaImagen  pgtype.Text `json:"pregunta_imagen"`
+	Explicacion     pgtype.Text `json:"explicacion"`
+	Subprueba       pgtype.Text `json:"subprueba"`
+	Componente      pgtype.Text `json:"componente"`
+	TextoBaseID     pgtype.UUID `json:"texto_base_id"`
+	OpcionID        pgtype.UUID `json:"opcion_id"`
+	Etiqueta        string      `json:"etiqueta"`
+	TextoOpcion     string      `json:"texto_opcion"`
+	EsCorrecta      bool        `json:"es_correcta"`
+	TextoID         pgtype.UUID `json:"texto_id"`
+	CodigoTextoBase pgtype.Text `json:"codigo_texto_base"`
+	TextoTitulo     pgtype.Text `json:"texto_titulo"`
+	TextoContenido  pgtype.Text `json:"texto_contenido"`
+	TextoImagen     pgtype.Text `json:"texto_imagen"`
+}
+
+func (q *Queries) GetExamenDetalleEntrenamiento(ctx context.Context, id pgtype.UUID) ([]GetExamenDetalleEntrenamientoRow, error) {
+	rows, err := q.db.Query(ctx, getExamenDetalleEntrenamiento, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetExamenDetalleEntrenamientoRow{}
+	for rows.Next() {
+		var i GetExamenDetalleEntrenamientoRow
+		if err := rows.Scan(
+			&i.ExamenID,
+			&i.Titulo,
+			&i.DuracionMinutos,
+			&i.PreguntaID,
+			&i.NumeroPregunta,
+			&i.TextoPregunta,
+			&i.PreguntaImagen,
+			&i.Explicacion,
+			&i.Subprueba,
+			&i.Componente,
+			&i.TextoBaseID,
+			&i.OpcionID,
+			&i.Etiqueta,
+			&i.TextoOpcion,
+			&i.EsCorrecta,
+			&i.TextoID,
+			&i.CodigoTextoBase,
+			&i.TextoTitulo,
+			&i.TextoContenido,
+			&i.TextoImagen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getOpcionesByPreguntaIDs = `-- name: GetOpcionesByPreguntaIDs :many
 SELECT id, pregunta_id, etiqueta, texto_opcion, es_correcta
 FROM opciones

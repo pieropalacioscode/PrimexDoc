@@ -1,4 +1,4 @@
-//frontend > src > app > simulacro > [id] > page.tsx 
+//frontend > src > app > simulacro > [id] > page.tsx
 'use client';
 
 import React, { useEffect, useState, useRef, use } from 'react';
@@ -21,6 +21,7 @@ import {
   Send,
   Loader2,
   X,
+  Lightbulb,
 } from 'lucide-react';
 import { QuestionText, InlineText } from '../../../components/exam/QuestionText';
 
@@ -58,6 +59,60 @@ function clasePildora(base: EstadoBasePildora, esActual: boolean): string {
   return clase;
 }
 
+// El endpoint de entrenamiento a veces devuelve listas (preguntas, textos_base) como
+// Mapa/Objeto { "id": {...} } en vez de Array, para búsquedas rápidas en el backend.
+// Esta función normaliza cualquiera de los dos formatos a un Array ordenado,
+// preservando el id (la llave del objeto) si el elemento no trae su propio "id".
+function normalizarAArray<T = any>(valor: any): T[] {
+  if (Array.isArray(valor)) return valor as T[];
+  if (valor && typeof valor === 'object') {
+    return Object.entries(valor)
+      .sort(([a], [b]) => {
+        const numA = Number(a);
+        const numB = Number(b);
+        if (!Number.isNaN(numA) && !Number.isNaN(numB)) return numA - numB;
+        return a.localeCompare(b);
+      })
+      .map(([key, val]) => {
+        if (val && typeof val === 'object' && !('id' in (val as any))) {
+          return { id: key, ...(val as object) } as T;
+        }
+        return val as T;
+      });
+  }
+  return [];
+}
+
+// ==========================================
+// ADAPTER: convierte cualquier respuesta cruda del backend (simulacro o
+// entrenamiento, con sus distintos nombres de campo) a un ExamenDetalle
+// canónico. El resto del componente solo conoce esta forma "blindada",
+// sin importar de qué endpoint vino el dato.
+// ==========================================
+function adaptarExamen(data: any): ExamenDetalle {
+  return {
+    ...data,
+    preguntas: normalizarAArray(data?.preguntas).map((p: any) => ({
+      id: p.id,
+      numero_pregunta: p.numero || p.numero_pregunta,
+      // Prioriza texto_pregunta (simulacro), luego texto (entrenamiento), luego enunciado (fallback)
+      texto_pregunta: p.texto_pregunta || p.texto || p.enunciado || '',
+      url_imagen: p.url_imagen || p.imagen_url,
+      explicacion: p.explicacion || '',
+      texto_base_id: p.texto_base_id,
+      subprueba: p.subprueba,
+      componente: p.componente,
+      opciones: normalizarAArray(p.opciones || p.alternativas).map((o: any) => ({
+        id: o.id,
+        etiqueta: o.etiqueta || o.letra,
+        texto_opcion: o.texto_opcion || o.texto || '',
+        es_correcta: !!o.es_correcta,
+      })),
+    })),
+    textos_base: normalizarAArray(data?.textos_base),
+  } as ExamenDetalle;
+}
+
 // ==========================================
 // COMPONENTE PRINCIPAL
 // ==========================================
@@ -67,11 +122,17 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
   const examenId = resolvedParams.id;
   const router = useRouter();
 
+  // --- MODO: simulacro (examen cronometrado) o entrenamiento (práctica con feedback instantáneo) ---
+  const [modo, setModo] = useState<'simulacro' | 'entrenamiento'>('simulacro');
+
   // Estado del examen
   const [examen, setExamen] = useState<ExamenDetalle | null>(null);
   const [intentoId, setIntentoId] = useState<string | null>(null);
   const [preguntaActualIdx, setPreguntaActualIdx] = useState(0);
   const [respuestas, setRespuestas] = useState<Record<string, string>>({});
+
+  // --- Preguntas ya reveladas en modo entrenamiento (bloquea cambio de respuesta y muestra feedback) ---
+  const [reveladas, setReveladas] = useState<Record<string, boolean>>({});
 
   // Estado de tiempo y controles
   const [tiempoRestante, setTiempoRestante] = useState(0);
@@ -105,29 +166,49 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
   });
 
   // ==========================================
-  // 1. INICIALIZACIÓN (Carga Examen + Crear Intento)
+  // 1. INICIALIZACIÓN (Carga Examen + Crear Intento) — SEGÚN EL MODO
   // ==========================================
   useEffect(() => {
     async function initSimulacro() {
       try {
         setLoading(true);
-        const examenData = await fetchAPI<ExamenDetalle>(`/examenes/${examenId}`);
-        setExamen(examenData);
 
-        if (examenData?.duracion_minutos) {
-          setTiempoRestante(examenData.duracion_minutos * 60);
+        // Endpoint dinámico: entrenamiento trae, además, la explicación pedagógica por pregunta
+        const url =
+          modo === 'entrenamiento' ? `/examenes/${examenId}/entrenamiento` : `/examenes/${examenId}`;
+
+        const rawData = await fetchAPI<any>(url);
+
+        // Blindaje: sin importar los nombres de campo que use cada endpoint
+        // (simulacro vs entrenamiento), adaptarExamen siempre devuelve la
+        // misma forma canónica que el resto del componente espera.
+        const examenAdaptado = adaptarExamen(rawData);
+        setExamen(examenAdaptado);
+
+        if (examenAdaptado?.duracion_minutos) {
+          setTiempoRestante(examenAdaptado.duracion_minutos * 60);
         }
 
         const intentoRes = await fetchAPI<{ id?: string; intento_id?: string }>('/intentos', {
           method: 'POST',
-          body: JSON.stringify({ examen_id: examenId, modo: 'simulacro' }),
+          body: JSON.stringify({
+            examen_id: examenId,
+            modo: modo === 'entrenamiento' ? 'practica' : 'simulacro',
+          }),
         });
 
         const idRecuperado = intentoRes?.id || intentoRes?.intento_id;
         if (idRecuperado) setIntentoId(idRecuperado);
+
+        // Reinicia el progreso local al cambiar de modo (cada modo tiene su propio intento)
+        setPreguntaActualIdx(0);
+        setRespuestas({});
+        setReveladas({});
+        setPreguntasMarcadas(new Set());
       } catch (err: any) {
-        console.error('Error al inicializar simulacro:', err);
-        alert(err?.error || 'No tienes acceso a este simulacro o falló el inicio.');
+        // Imprime el error exacto en consola antes del alert, para diagnóstico rápido
+        console.error('ERROR CRÍTICO EN INICIALIZACIÓN:', err);
+        alert(err?.error || 'Error al conectar con el servidor.');
         router.push('/examenes');
       } finally {
         setLoading(false);
@@ -135,7 +216,7 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
     }
 
     if (examenId) initSimulacro();
-  }, [examenId, router]);
+  }, [examenId, modo, router]);
 
   // ==========================================
   // 2. FUNCIÓN DE FINALIZACIÓN / ENVÍO (Soporta Manual y Timeout)
@@ -230,7 +311,15 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
   // ==========================================
   const seleccionarAlternativa = (preguntaId: string, alternativaId: string) => {
     if (submitting) return;
+
+    // En modo entrenamiento, una vez revelada la respuesta correcta ya no se puede cambiar
+    if (modo === 'entrenamiento' && reveladas[preguntaId]) return;
+
     setRespuestas((prev) => ({ ...prev, [preguntaId]: alternativaId }));
+
+    if (modo === 'entrenamiento') {
+      setReveladas((prev) => ({ ...prev, [preguntaId]: true }));
+    }
   };
 
   const toggleMarcarPregunta = (preguntaId: string) => {
@@ -256,7 +345,9 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <Loader2 className="w-9 h-9 text-blue-600 animate-spin mx-auto" />
-          <p className="text-slate-600 font-medium text-sm">Cargando simulacro en vivo...</p>
+          <p className="text-slate-600 font-medium text-sm">
+            {modo === 'entrenamiento' ? 'Cargando modo práctica...' : 'Cargando simulacro en vivo...'}
+          </p>
         </div>
       </div>
     );
@@ -265,11 +356,23 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
   // Variables derivadas
   const preguntaActual = examen.preguntas[preguntaActualIdx];
   const totalPreguntas = examen.preguntas.length;
+
+  // Protección: mientras cambia de modo/pregunta puede no haber pregunta actual todavía
+  if (!preguntaActual) {
+    return <div className="p-10 text-center text-slate-500">Cargando pregunta...</div>;
+  }
+
   const respondidasCount = Object.keys(respuestas).length;
   const esUltimaPregunta = preguntaActualIdx === totalPreguntas - 1;
-  const textoBaseActual = examen.textos_base?.find((tb) => tb.id === preguntaActual?.texto_base_id);
+
+  // textos_base ya llega normalizado a Array desde el efecto de inicialización
+  const textoBaseActual = examen?.textos_base?.find((tb: any) => tb.id === preguntaActual?.texto_base_id);
+
   const avance = totalPreguntas ? Math.round((respondidasCount / totalPreguntas) * 100) : 0;
   const preguntaMarcadaActual = preguntasMarcadas.has(preguntaActual.id);
+
+  // Modo entrenamiento: ¿ya se reveló el resultado de la pregunta actual?
+  const mostrarResultadoActual = modo === 'entrenamiento' && !!reveladas[preguntaActual.id];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans pb-24 lg:pb-0">
@@ -371,21 +474,47 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
-            <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-mono text-sm sm:text-base font-bold transition-colors ${claseReloj(tiempoRestante)}`}>
-              <Clock className="w-4 h-4" />
-              <span>{formatTiempo(tiempoRestante)}</span>
+            {/* TOGGLE DE MODO: SIMULACRO / ENTRENAMIENTO */}
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+              <button
+                onClick={() => setModo('simulacro')}
+                disabled={submitting}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${
+                  modo === 'simulacro' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                SIMULACRO
+              </button>
+              <button
+                onClick={() => setModo('entrenamiento')}
+                disabled={submitting}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${
+                  modo === 'entrenamiento' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                PRÁCTICA 🚀
+              </button>
             </div>
 
+            {tiempoRestante > 0 && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-mono text-sm sm:text-base font-bold transition-colors ${claseReloj(tiempoRestante)}`}>
+                <Clock className="w-4 h-4" />
+                <span>{formatTiempo(tiempoRestante)}</span>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setEsPausado(true)}
-                disabled={submitting}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-white border-2 border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50"
-                title="Pausar simulacro"
-              >
-                <Pause className="w-4 h-4" />
-                <span className="hidden lg:inline">Pausar</span>
-              </button>
+              {modo === 'simulacro' && (
+                <button
+                  onClick={() => setEsPausado(true)}
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-white border-2 border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50"
+                  title="Pausar simulacro"
+                >
+                  <Pause className="w-4 h-4" />
+                  <span className="hidden lg:inline">Pausar</span>
+                </button>
+              )}
 
               <button
                 onClick={() => toggleMarcarPregunta(preguntaActual.id)}
@@ -486,17 +615,31 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
                 const seleccionada = respuestas[preguntaActual.id] === alt.id;
                 const etiqueta = alt.etiqueta || alt.letra || '•';
                 const textoOpcion = alt.texto_opcion || (alt as any).texto;
+                const esCorrecta = (alt as any).es_correcta;
+
+                // Estilo base (aplica siempre, en ambos modos)
+                let borderClass = 'border-slate-200 hover:border-blue-300 bg-white shadow-sm';
+                if (seleccionada) {
+                  borderClass = 'border-blue-600 bg-blue-50/80 shadow-md ring-4 ring-blue-600/10';
+                }
+
+                // En modo entrenamiento, tras revelar, se sobreescribe con feedback correcto/incorrecto
+                if (mostrarResultadoActual) {
+                  if (esCorrecta) {
+                    borderClass = 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500';
+                  } else if (seleccionada && !esCorrecta) {
+                    borderClass = 'border-red-500 bg-red-50 ring-2 ring-red-500';
+                  } else {
+                    borderClass = 'border-slate-200 bg-white opacity-70';
+                  }
+                }
 
                 return (
                   <button
                     key={alt.id}
                     onClick={() => seleccionarAlternativa(preguntaActual.id, alt.id)}
-                    disabled={submitting}
-                    className={`w-full text-left p-4 sm:p-5 rounded-2xl border-2 transition-all flex items-center gap-4 sm:gap-5 group ${
-                      seleccionada
-                        ? 'border-blue-600 bg-blue-50/80 shadow-md ring-4 ring-blue-600/10'
-                        : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 bg-white shadow-sm'
-                    }`}
+                    disabled={submitting || mostrarResultadoActual}
+                    className={`w-full text-left p-4 sm:p-5 rounded-2xl border-2 transition-all flex items-center gap-4 sm:gap-5 group ${borderClass}`}
                   >
                     <span
                       className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 transition-colors ${
@@ -510,11 +653,24 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
                     <span className={`flex-1 text-sm sm:text-base leading-relaxed ${seleccionada ? 'text-blue-950 font-medium' : 'text-slate-700'}`}>
                       <InlineText text={textoOpcion} />
                     </span>
-                    {seleccionada && <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />}
+                    {seleccionada && !mostrarResultadoActual && <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />}
                   </button>
                 );
               })}
             </div>
+
+            {/* SUSTENTO PEDAGÓGICO INSTANTÁNEO (solo modo entrenamiento, tras responder) */}
+            {mostrarResultadoActual && (
+              <div className="mt-8 p-6 bg-amber-50 border border-amber-100 rounded-3xl animate-in fade-in slide-in-from-top-4">
+                <div className="flex items-center gap-2 mb-3 text-amber-700 font-bold">
+                  <Lightbulb className="w-5 h-5" />
+                  <h4>Sustento Pedagógico:</h4>
+                </div>
+                <p className="text-slate-700 italic leading-relaxed">
+                  {(preguntaActual as any).explicacion || 'No hay explicación disponible para esta pregunta.'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Navegación (barra fija en móvil, integrada en desktop) */}

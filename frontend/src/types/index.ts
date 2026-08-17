@@ -22,7 +22,9 @@ export interface EstadoSuscripcion {
   tiene_acceso: boolean;
   plan?: 'mensual' | 'semestral' | 'anual';
   fecha_expiracion?: string;
+  activo?:boolean
   mensaje?: string;
+   suscripcion_hasta?: string;
 }
 
 export interface PaywallErrorResponse {

@@ -79,14 +79,16 @@ export default function ExamenesPage() {
   };
 
   const handleExamenClick = (examen: ExamenCompleto) => {
-    if (examen.es_demo || suscripcion?.tiene_acceso) {
+    // Verificamos 'tiene_acceso' o 'activo' por si acaso
+    const accesoPermitido = suscripcion?.tiene_acceso || (suscripcion as any)?.activo;
+
+    if (examen.es_demo || accesoPermitido) {
       window.location.href = `/simulacro/${examen.id}`;
     } else {
       setSelectedExamenTitulo(examen.titulo);
       setIsModalOpen(true);
     }
   };
-
   // 4. FUNCIÓN PARA MANEJAR EL CLIC EN EL MARCADOR
   const handleToggleFav = async (e: React.MouseEvent, examenId: string) => {
     e.stopPropagation(); // Evita que se abra el simulacro al marcar favorito
@@ -227,7 +229,7 @@ export default function ExamenesPage() {
           /* Grid de Tarjetas */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {examenesFiltrados.map((ex) => {
-              const tieneAccesoExamen = ex.es_demo || suscripcion?.tiene_acceso;
+              const tieneAccesoExamen = ex.es_demo || suscripcion?.tiene_acceso || (suscripcion as any)?.activo;
               const estaAbierto = !!descripcionesAbiertas[ex.id];
               
               // 5. CHEQUEAR SI ES FAVORITO

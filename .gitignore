@@ -21,3 +21,5 @@ backend/bin/
 .DS_Store
 Thumbs.db
 EOF
+
+*:Zone.Identifier

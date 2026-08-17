@@ -102,6 +102,33 @@ func (q *Queries) GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUse
 	return i, err
 }
 
+const getUsuarioByID = `-- name: GetUsuarioByID :one
+SELECT id, correo, nombre_completo, rol, suscripcion_hasta
+FROM usuarios
+WHERE id = $1
+`
+
+type GetUsuarioByIDRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	Rol              pgtype.Text        `json:"rol"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+}
+
+func (q *Queries) GetUsuarioByID(ctx context.Context, id pgtype.UUID) (GetUsuarioByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUsuarioByID, id)
+	var i GetUsuarioByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Correo,
+		&i.NombreCompleto,
+		&i.Rol,
+		&i.SuscripcionHasta,
+	)
+	return i, err
+}
+
 const guardarCodigoRecuperacion = `-- name: GuardarCodigoRecuperacion :one
 INSERT INTO password_resets (correo, codigo, expira_en)
 VALUES ($1, $2, $3)

@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
-	"github.com/jackc/pgx/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -15,41 +17,40 @@ type SuscripcionUsuarioHandler struct {
 }
 
 func (h *SuscripcionUsuarioHandler) GetMiSuscripcion(w http.ResponseWriter, r *http.Request) {
-	// 1. Obtener ID del usuario desde el JWT
 	userIDStr, ok := auth.GetUserID(r.Context())
 	if !ok {
-		http.Error(w, `{"error": "No autorizado"}`, http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userIDStr); err != nil {
-		http.Error(w, `{"error": "ID inválido"}`, http.StatusBadRequest)
+	parsedID, _ := uuid.Parse(userIDStr)
+	pgUserID := pgtype.UUID{Bytes: parsedID, Valid: true}
+
+	usuario, err := h.DB.GetUsuarioByID(r.Context(), pgUserID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	// 2. Consultar la suscripción activa usando el query generado por sqlc
-	sub, err := h.DB.GetSuscripcionActiva(r.Context(), userUUID)
+	// Lógica robusta: Comparar con tiempo UTC para evitar problemas de zona horaria del servidor
+	ahora := time.Now().UTC()
+	fechaVencimiento := usuario.SuscripcionHasta.Time.UTC()
+	
+	// El usuario es activo si la fecha es válida Y es mayor a "ahora"
+	estaActivo := usuario.SuscripcionHasta.Valid && fechaVencimiento.After(ahora)
+
+	// LOG PROFESIONAL PARA AUDITORÍA EN TERMINAL
+	fmt.Printf("[SUSCRIPCIÓN] Usuario: %s | ID: %s | Estado: %v | Vence: %s\n", 
+		usuario.Correo, userIDStr, estaActivo, fechaVencimiento.Format("2006-01-02 15:04:05"))
 
 	w.Header().Set("Content-Type", "application/json")
-
-	if err == pgx.ErrNoRows {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"tiene_acceso": false,
-			"mensaje":      "No tienes una suscripción activa",
-		})
-		return
-	} else if err != nil {
-		http.Error(w, `{"error": "Error interno al verificar suscripción"}`, http.StatusInternalServerError)
-		return
-	}
-
-	// 3. Devolver los datos del plan activo al docente
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"tiene_acceso":     true,
-		"plan":             sub.Plan,
-		"fecha_expiracion": sub.FechaExpiracion.Time,
-	})
+	// Enviamos campos redundantes para asegurar compatibilidad con el Frontend
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "activo":            estaActivo,      // Nombre técnico
+        "tiene_acceso":      estaActivo,      // Mapeo para el Frontend actual 👈 AGREGA ESTO
+        "suscripcion_hasta": usuario.SuscripcionHasta.Time,
+        "correo":            usuario.Correo,
+        "nombre":            usuario.NombreCompleto,
+})
 }

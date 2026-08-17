@@ -98,17 +98,23 @@ func (ns NullTipoPlan) Value() (driver.Value, error) {
 }
 
 type Examene struct {
-	ID                pgtype.UUID        `json:"id"`
-	Titulo            string             `json:"titulo"`
-	CodigoCuadernillo string             `json:"codigo_cuadernillo"`
-	Descripcion       pgtype.Text        `json:"descripcion"`
-	Nivel             string             `json:"nivel"`
-	Tipo              string             `json:"tipo"`
-	Anio              int32              `json:"anio"`
-	TotalPreguntas    int32              `json:"total_preguntas"`
-	DuracionMinutos   int32              `json:"duracion_minutos"`
-	Activo            pgtype.Bool        `json:"activo"`
-	CreadoEn          pgtype.Timestamptz `json:"creado_en"`
+	ID                            pgtype.UUID        `json:"id"`
+	Titulo                        string             `json:"titulo"`
+	CodigoCuadernillo             string             `json:"codigo_cuadernillo"`
+	Descripcion                   pgtype.Text        `json:"descripcion"`
+	Nivel                         string             `json:"nivel"`
+	Tipo                          string             `json:"tipo"`
+	Anio                          int32              `json:"anio"`
+	TotalPreguntas                int32              `json:"total_preguntas"`
+	DuracionMinutos               int32              `json:"duracion_minutos"`
+	AccesoPdf                     pgtype.Text        `json:"acceso_pdf"`
+	UrlPdfExamen                  pgtype.Text        `json:"url_pdf_examen"`
+	UrlPdfClaves                  pgtype.Text        `json:"url_pdf_claves"`
+	Completo                      pgtype.Bool        `json:"completo"`
+	FuenteHabilidadesGenerales    pgtype.Text        `json:"fuente_habilidades_generales"`
+	UrlOrigenHabilidadesGenerales pgtype.Text        `json:"url_origen_habilidades_generales"`
+	Activo                        pgtype.Bool        `json:"activo"`
+	CreadoEn                      pgtype.Timestamptz `json:"creado_en"`
 }
 
 type ExamenesGuardado struct {
@@ -166,6 +172,8 @@ type Pregunta struct {
 	TextoPregunta    string             `json:"texto_pregunta"`
 	UrlImagen        pgtype.Text        `json:"url_imagen"`
 	Explicacion      pgtype.Text        `json:"explicacion"`
+	Subprueba        pgtype.Text        `json:"subprueba"`
+	Componente       pgtype.Text        `json:"componente"`
 	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
 	OpcionCorrectaID pgtype.UUID        `json:"opcion_correcta_id"`
 }
@@ -198,6 +206,7 @@ type TextosBase struct {
 	CodigoTextoBase string             `json:"codigo_texto_base"`
 	Titulo          pgtype.Text        `json:"titulo"`
 	Contenido       string             `json:"contenido"`
+	UrlImagen       pgtype.Text        `json:"url_imagen"`
 	CreadoEn        pgtype.Timestamptz `json:"creado_en"`
 }
 

@@ -23,7 +23,7 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
+    ports: 
       - "5050:80"
     networks:
       - primex_network

@@ -21,6 +21,7 @@ type Querier interface {
 	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
 	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
 	GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenByIDRow, error)
+	GetExamenDetalleEntrenamiento(ctx context.Context, id pgtype.UUID) ([]GetExamenDetalleEntrenamientoRow, error)
 	GetOpcionesByPreguntaIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Opcione, error)
 	// Si ya existe, opcionalmente actualizamos su nombre si estaba vacío, o simplemente lo dejamos intacto
 	GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUserByEmailParams) (GetOrCreateUserByEmailRow, error)
@@ -28,6 +29,7 @@ type Querier interface {
 	GetRespuestasPorIntentoID(ctx context.Context, intentoID pgtype.UUID) ([]GetRespuestasPorIntentoIDRow, error)
 	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
 	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
+	GetUsuarioByID(ctx context.Context, id pgtype.UUID) (GetUsuarioByIDRow, error)
 	GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodigoRecuperacionParams) (pgtype.UUID, error)
 	GuardarExamen(ctx context.Context, arg GuardarExamenParams) error
 	//intentos.sql:
