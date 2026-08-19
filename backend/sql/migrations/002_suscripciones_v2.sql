@@ -15,3 +15,11 @@ CREATE TABLE suscripciones (
 );
 
 CREATE INDEX idx_susc_activa ON suscripciones(usuario_id) WHERE estado = 'activa' AND fecha_expiracion > NOW();
+
+
+-- Índices para acelerar el agrupamiento por subprueba y componente
+CREATE INDEX IF NOT EXISTS idx_preguntas_subprueba ON preguntas(subprueba);
+CREATE INDEX IF NOT EXISTS idx_preguntas_componente ON preguntas(componente);
+
+-- Índice para acelerar el cálculo de aciertos por intento
+CREATE INDEX IF NOT EXISTS idx_respuestas_intento_es_correcta ON respuestas_intento(intento_id, es_correcta);

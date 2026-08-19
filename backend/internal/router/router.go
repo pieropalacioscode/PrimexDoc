@@ -26,13 +26,14 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 		MaxAge:           300,
 	}))
 
-	// Instanciamos todos los Handlers
+	// 1. Instanciamos todos los Handlers
 	examenH := handler.NewExamenHandler(queries)
 	authH := handler.NewAuthHandler(queries)
 	intentoH := handler.NewIntentoHandler(queries)
 	adminSubH := &handler.AdminSuscripcionesHandler{DB: queries}
 	userSubH := &handler.SuscripcionUsuarioHandler{DB: queries}
 	googleH := &handler.GoogleAuthHandler{DB: queries}
+	analiticaH := handler.NewAnaliticaHandler(queries) // <-- NUEVO: Instancia de Analítica
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -40,6 +41,7 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authH.Register)
 			r.Post("/login", authH.Login)
+
 			r.Post("/forgot-password", authH.ForgotPassword)
 			r.Post("/reset-password", authH.ResetPassword)
 
@@ -59,8 +61,8 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 			// --- EXÁMENES (Acceso con Suscripción) ---
 			r.Route("/examenes/{id}", func(r chi.Router) {
 				r.Use(auth.RequireSubscription(queries))
-				
-				r.Get("/", examenH.ObtenerExamenPorID)            // Modo Simulacro (Normal)
+
+				r.Get("/", examenH.ObtenerExamenPorID)                      // Modo Simulacro (Normal)
 				r.Get("/entrenamiento", examenH.GetExamenParaEntrenamiento) // MODO ENTRENAMIENTO (Nuevo 🚀)
 			})
 
@@ -79,6 +81,21 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 				r.Post("/{id}", examenH.ToggleFavorito)
 				r.Delete("/{id}", examenH.EliminarFavorito)
 			})
+			r.Post("/intentos", intentoH.IniciarIntento)
+			r.Get("/intentos", intentoH.ListarHistorial)
+			r.Get("/intentos/{id}", intentoH.ObtenerIntentoPorID)
+			r.Get("/intentos/{id}/resultados", intentoH.ObtenerResultadoDetalle)
+			r.Post("/intentos/{id}/finalizar", intentoH.FinalizarIntento)
+
+			// --- ANALÍTICA ---
+			// NUEVO: Rutas para las estadísticas y progreso del docente
+			r.Get("/analitica/intento/{id}", analiticaH.ObtenerAnaliticaPorIntento)
+			// r.Get("/analitica/progreso", analiticaH.ObtenerProgresoGlobal) // Descomentar cuando esté listo
+
+			// --- FAVORITOS ---
+			r.Get("/favoritos", examenH.ListarFavoritos)
+			r.Post("/favoritos/{id}", examenH.ToggleFavorito)
+			r.Delete("/favoritos/{id}", examenH.EliminarFavorito)
 
 			// --- PANEL ADMINISTRADOR ---
 			r.Group(func(r chi.Router) {

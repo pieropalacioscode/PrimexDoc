@@ -1,4 +1,4 @@
-//internal/handler/dto.go
+// internal/handler/dto.go
 package handler
 
 import (
@@ -29,11 +29,11 @@ type ExamenResumenDTO struct {
 }
 
 type TextoBaseDTO struct {
-    ID              string `json:"id"`
-    CodigoTextoBase string `json:"codigo_texto_base"` // Agregamos esto
-    Titulo          string `json:"titulo"`
-    Contenido       string `json:"contenido"`
-    ImagenURL       string `json:"imagen_url,omitempty"`
+	ID              string `json:"id"`
+	CodigoTextoBase string `json:"codigo_texto_base"` // Agregamos esto
+	Titulo          string `json:"titulo"`
+	Contenido       string `json:"contenido"`
+	ImagenURL       string `json:"imagen_url,omitempty"`
 }
 type OpcionDTO struct {
 	ID          uuid.UUID `json:"id"`
@@ -116,7 +116,6 @@ type ReporteIntentoDetalleDTO struct {
 	Detalles []DetalleRespuestaRetroalimentacionDTO `json:"detalles"`
 }
 
-
 type OpcionEntrenamientoDTO struct {
 	ID         string `json:"id"`
 	Etiqueta   string `json:"etiqueta"`
@@ -137,10 +136,30 @@ type PreguntaEntrenamientoDTO struct {
 }
 
 type ExamenEntrenamientoResponse struct {
-	ID              string                     `json:"id"`
-	Titulo          string                     `json:"titulo"`
-	DuracionMinutos int32                      `json:"duracion_minutos"`
+	ID              string `json:"id"`
+	Titulo          string `json:"titulo"`
+	DuracionMinutos int32  `json:"duracion_minutos"`
 	// IMPORTANTE: 'textos_base' en minúsculas para que el front lo encuentre
-	TextosBase      map[string]TextoBaseDTO    `json:"textos_base"` 
-	Preguntas       []PreguntaEntrenamientoDTO `json:"preguntas"`
+	TextosBase map[string]TextoBaseDTO    `json:"textos_base"`
+	Preguntas  []PreguntaEntrenamientoDTO `json:"preguntas"`
+}
+type AnaliticaResumen struct {
+	Subprueba       string  `json:"subprueba"`
+	TotalPreguntas  int64   `json:"total_preguntas"`
+	Correctas       int64   `json:"correctas"`
+	PorcentajeExito float64 `json:"porcentaje_exito"`
+}
+
+type ComponenteResumen struct {
+	Componente string `json:"componente"`
+	Total      int64  `json:"total"`
+	Aciertos   int64  `json:"aciertos"`
+}
+
+type AnaliticaIntentoDTO struct {
+	IntentoID     uuid.UUID           `json:"intento_id"`
+	PorSubprueba  []AnaliticaResumen  `json:"por_subprueba"`
+	PorComponente []ComponenteResumen `json:"por_componente"`
+	Debilidades   []string            `json:"debilidades"`
+	Recomendacion string              `json:"recomendacion"`
 }

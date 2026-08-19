@@ -1,31 +1,56 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/context/AuthContext';
 import { fetchAPI } from '@/services/api';
 import { AuthResponse } from '@/types';
 
+// ESQUEMA DE VALIDACIÓN CON ZOD
+const loginSchema = z.object({
+  correo: z.string().email('Ingresa un correo institucional o personal válido'),
+  contrasena: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
+
 function LoginForm() {
-  const { login } = useAuth();
+  const { login, user, token } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const isExpired = searchParams.get('expired') === 'true';
 
-  const [correo, setCorreo] = useState('');
-  const [contrasena, setContrasena] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // CONFIGURACIÓN DE REACT HOOK FORM + ZOD
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  // REDIRECCIÓN AUTOMÁTICA SI YA ESTÁ LOGUEADO
+  useEffect(() => {
+    if (user && token) {
+      router.replace('/examenes');
+    }
+  }, [user, token, router]);
+
+  const onSubmit = async (values: LoginFormValues) => {
     setError(null);
     setLoading(true);
 
     try {
       const data = await fetchAPI<AuthResponse>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ correo, contrasena }),
+        body: JSON.stringify(values),
       });
 
       login(data);
@@ -63,7 +88,7 @@ function LoginForm() {
         </div>
       )}
 
-      {/* Alerta de Error de Credenciales */}
+      {/* Alerta de Error de Servidor / Credenciales */}
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl">
           {error}
@@ -104,35 +129,48 @@ function LoginForm() {
         </span>
       </div>
 
-      {/* Formulario Tradicional */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Formulario Tradicional con React Hook Form */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* Campo Correo */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">
             Correo Electrónico
           </label>
           <input
             type="email"
-            required
-            value={correo}
-            onChange={(e) => setCorreo(e.target.value)}
+            {...register('correo')}
             placeholder="docente@peru.com"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 text-sm"
+            className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none focus:ring-2 text-slate-800 text-sm transition-colors ${
+              errors.correo
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-slate-300 focus:ring-blue-500 focus:border-transparent'
+            }`}
           />
+          {errors.correo && (
+            <p className="text-red-500 text-xs mt-1 font-medium">{errors.correo.message}</p>
+          )}
         </div>
 
+        {/* Campo Contraseña */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">
             Contraseña
           </label>
           <input
             type="password"
-            required
-            value={contrasena}
-            onChange={(e) => setContrasena(e.target.value)}
+            {...register('contrasena')}
             placeholder="••••••••"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 text-sm"
+            className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none focus:ring-2 text-slate-800 text-sm transition-colors ${
+              errors.contrasena
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-slate-300 focus:ring-blue-500 focus:border-transparent'
+            }`}
           />
-          {/* ENLACE DE RECUPERACIÓN */}
+          {errors.contrasena && (
+            <p className="text-red-500 text-xs mt-1 font-medium">{errors.contrasena.message}</p>
+          )}
+
+          {/* Enlace de Recuperación */}
           <div className="flex justify-end mt-1.5">
             <Link href="/forgot-password" className="text-xs text-blue-600 font-medium hover:underline">
               ¿Olvidaste tu contraseña?
@@ -140,6 +178,7 @@ function LoginForm() {
           </div>
         </div>
 
+        {/* Botón Submit */}
         <button
           type="submit"
           disabled={loading}

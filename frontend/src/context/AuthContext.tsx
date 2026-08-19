@@ -1,4 +1,3 @@
-//src/context/AuthContext.tsx
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -22,17 +21,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Función para cerrar sesión (Memoizada para evitar re-renders)
+  // ============================================================
+  // CERRAR SESIÓN
+  // ============================================================
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
+    
+    // Limpieza de almacenamiento local
     localStorage.removeItem('primex_token');
     localStorage.removeItem('primex_user');
+    
+    // Eliminación de cookie para el Middleware de Next.js
     document.cookie = 'primex_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    
     router.push('/login');
   }, [router]);
 
-  // Cargar sesión inicial
+  // ============================================================
+  // CARGA INICIAL DE SESIÓN
+  // ============================================================
   useEffect(() => {
     const storedToken = localStorage.getItem('primex_token');
     const storedUser = localStorage.getItem('primex_user');
@@ -42,13 +50,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
       } catch (e) {
+        console.error("Error al restaurar sesión:", e);
         logout();
       }
     }
     setIsLoading(false);
   }, [logout]);
 
-  // Función Login Tradicional
+  // ============================================================
+  // LOGIN TRADICIONAL (CORREO / CONTRASEÑA)
+  // ============================================================
   const login = useCallback((authData: AuthResponse) => {
     setToken(authData.token);
     setUser(authData.usuario);
@@ -56,13 +67,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('primex_token', authData.token);
     localStorage.setItem('primex_user', JSON.stringify(authData.usuario));
     
-    // Cookie para el middleware de Next.js
+    // Cookie activa por 7 días para el Middleware de Next.js
     document.cookie = `primex_token=${authData.token}; path=/; max-age=604800; SameSite=Lax`;
     
     router.push('/examenes');
   }, [router]);
 
-  // Función Login para Google (Procesa el Token y extrae el usuario)
+  // ============================================================
+  // LOGIN OAUTH (GOOGLE)
+  // ============================================================
   const loginWithToken = useCallback(async (newToken: string): Promise<boolean> => {
     try {
       // Decodificar el Payload del JWT

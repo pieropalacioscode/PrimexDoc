@@ -115,4 +115,9 @@ CREATE TABLE password_resets (
     expira_en TIMESTAMP WITH TIME ZONE NOT NULL,
     usado BOOLEAN DEFAULT FALSE,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+
 );
+
+CREATE INDEX idx_password_resets_valido ON password_resets(correo, codigo) WHERE usado = FALSE;
+ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS subprueba VARCHAR(255) DEFAULT '';
+ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS componente VARCHAR(255) DEFAULT '';

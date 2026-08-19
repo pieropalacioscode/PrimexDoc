@@ -40,6 +40,7 @@ func main() {
 
 	// 🛠️ AUTOMIGRACIÓN: Crear/Actualizar tablas y agregar nuevas columnas si no existen
 	ddlAutoMigrate := `
+
 	CREATE TABLE IF NOT EXISTS textos_base (
 		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 		examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
@@ -51,16 +52,38 @@ func main() {
 		CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
 	);
 
+		CREATE TABLE IF NOT EXISTS textos_base (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
+			codigo_texto_base VARCHAR(50) NOT NULL,
+			titulo VARCHAR(255),
+			contenido TEXT NOT NULL,
+			url_imagen TEXT,
+			creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
+		);
+
 	CREATE INDEX IF NOT EXISTS idx_textos_base_examen ON textos_base(examen_id);
 
 	-- Agregar nuevas columnas a examenes
 	ALTER TABLE examenes 
+		-- Agregar nuevas columnas a examenes
+		ALTER TABLE examenes 
 		ADD COLUMN IF NOT EXISTS acceso_pdf VARCHAR(50),
 		ADD COLUMN IF NOT EXISTS url_pdf_examen TEXT,
 		ADD COLUMN IF NOT EXISTS url_pdf_claves TEXT,
 		ADD COLUMN IF NOT EXISTS completo BOOLEAN DEFAULT TRUE,
 		ADD COLUMN IF NOT EXISTS fuente_habilidades_generales VARCHAR(255),
 		ADD COLUMN IF NOT EXISTS url_origen_habilidades_generales TEXT;
+		-- Agregar nuevas columnas a textos_base
+		ALTER TABLE textos_base 
+		ADD COLUMN IF NOT EXISTS url_imagen TEXT;
+
+		-- Agregar nuevas columnas a preguntas
+		ALTER TABLE preguntas 
+		ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL,
+		ADD COLUMN IF NOT EXISTS subprueba VARCHAR(100),
+		ADD COLUMN IF NOT EXISTS componente VARCHAR(100);
 
 	-- Agregar nuevas columnas a textos_base
 	ALTER TABLE textos_base 
@@ -138,6 +161,9 @@ func main() {
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (codigo_cuadernillo)
 		DO UPDATE SET
+			acceso_pdf, url_pdf_examen, url_pdf_claves, completo, fuente_habilidades_generales, url_origen_habilidades_generales
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (codigo_cuadernillo) DO UPDATE SET
 			titulo = EXCLUDED.titulo,
 			descripcion = EXCLUDED.descripcion,
 			nivel = EXCLUDED.nivel,
@@ -335,6 +361,9 @@ func main() {
 	fmt.Printf(" • Examen ID: %s (%s)\n", examenID, codigoCuadernillo)
 	fmt.Printf(" • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
 	fmt.Printf(" • Opciones insertadas: %d\n", opcionesCount)
+	fmt.Printf("   • Examen ID: %s (%s)\n", examenID, codigoCuadernillo)
+	fmt.Printf("   • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
+	fmt.Printf("   • Opciones insertadas: %d\n", opcionesCount)
 }
 
 func getVal(row []string, mapHeader map[string]int, key string) string {

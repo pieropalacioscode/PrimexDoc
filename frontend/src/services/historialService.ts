@@ -55,3 +55,27 @@ export interface ExamenResumen {
 export const getFavoritos = async (): Promise<ExamenResumen[]> => {
   return fetchAPI<ExamenResumen[]>('/favoritos');
 };
+
+
+// Define el tipo de datos que viene del backend
+export interface AnaliticaIntento {
+  intento_id: string;
+  por_subprueba: {
+    subprueba: string;
+    total_preguntas: number;
+    correctas: number;
+    porcentaje_exito: number;
+  }[];
+  por_componente: {
+    componente: string;
+    total: number;
+    aciertos: number;
+  }[];
+  debilidades: string[];
+  recomendacion: string;
+}
+
+// Nueva función en el service
+export const getAnaliticaIntento = async (intentoId: string): Promise<AnaliticaIntento> => {
+  return fetchAPI<AnaliticaIntento>(`/analitica/intento/${intentoId}`);
+};
