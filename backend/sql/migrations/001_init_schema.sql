@@ -120,30 +120,24 @@ CREATE TABLE password_resets (
 
 );
 
--- 1. ANALÍTICA MACRO (Radar)
--- name: GetAnaliticaSubprueba :many
+-- name: ObtenerAnaliticaPorIntento :many
 SELECT 
     COALESCE(NULLIF(p.subprueba, ''), 'General')::TEXT as subprueba,
     COUNT(ri.id)::BIGINT as total_preguntas,
     SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as correctas,
-    -- Forzamos a BIGINT después del ROUND para evitar decimales en Go
-    ROUND(
-        (SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ri.id), 0)::float) * 100
-    )::BIGINT as porcentaje_exito
+    CAST(ROUND((SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(ri.id), 0)::FLOAT) * 100) AS BIGINT) as porcentaje_exito
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
 WHERE ri.intento_id = $1
 GROUP BY p.subprueba;
 
--- name: GetAnaliticaComponente :many
+-- name: ObtenerAnaliticaDetalladaPorComponente :many
 SELECT 
     COALESCE(NULLIF(p.componente, ''), 'General')::TEXT as componente,
     COUNT(ri.id)::BIGINT as total,
     SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as aciertos,
-    -- Mismo casting aquí para robustez
-    ROUND(
-        (SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ri.id), 0)::float) * 100
-    )::BIGINT as porcentaje
+    -- ESTA COLUMNA FALTABA EN TU SQL ANTERIOR:
+    CAST(ROUND((SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(ri.id), 0)::FLOAT) * 100) AS BIGINT) as porcentaje
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
 WHERE ri.intento_id = $1

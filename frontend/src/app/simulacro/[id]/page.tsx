@@ -1,4 +1,3 @@
-//frontend > src > app > simulacro > [id] > page.tsx
 'use client';
 
 import React, { useEffect, useState, useRef, use } from 'react';
@@ -98,10 +97,10 @@ function adaptarExamen(data: any): ExamenDetalle {
     preguntas: normalizarAArray(data?.preguntas).map((p: any) => ({
       id: p.id,
       numero_pregunta: p.numero || p.numero_pregunta || 0,
-      
+
       // Lógica de texto con fallback robusto
       texto_pregunta: (p.texto_pregunta || p.texto || p.enunciado || '').trim(),
-      
+
       url_imagen: p.url_imagen || p.imagen_url || null,
       explicacion: p.explicacion || '',
       texto_base_id: p.texto_base_id || null,
@@ -123,7 +122,7 @@ function adaptarExamen(data: any): ExamenDetalle {
     // Normalizamos textos base (casos pedagógicos)
     textos_base: normalizarAArray(data?.textos_base).map((tb: any) => ({
       ...tb,
-      contenido: tb.contenido || tb.texto || ''
+      contenido: tb.contenido || tb.texto || '',
     })),
   } as ExamenDetalle;
 }
@@ -203,13 +202,20 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
           setTiempoRestante(examenAdaptado.duracion_minutos * 60);
         }
 
-        const intentoRes = await fetchAPI<{ id?: string; intento_id?: string }>('/intentos', {
-          method: 'POST',
-          body: JSON.stringify({
-            examen_id: examenId,
-            modo: modo === 'entrenamiento' ? 'practica' : 'simulacro',
-          }),
-        });
+        // Verificación de pertenencia: el backend valida que este intento
+        // le pertenezca al usuario autenticado. Si el examen_id ya tiene un
+        // intento de otro usuario o no le pertenece, responde 403 y lo
+        // manejamos explícitamente más abajo en el catch.
+        const intentoRes = await fetchAPI<{ id?: string; intento_id?: string; usuario_id?: string }>(
+          '/intentos',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              examen_id: examenId,
+              modo: modo === 'entrenamiento' ? 'practica' : 'simulacro',
+            }),
+          }
+        );
 
         const idRecuperado = intentoRes?.id || intentoRes?.intento_id;
         if (idRecuperado) setIntentoId(idRecuperado);
@@ -222,8 +228,15 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
       } catch (err: any) {
         // Imprime el error exacto en consola antes del alert, para diagnóstico rápido
         console.error('ERROR CRÍTICO EN INICIALIZACIÓN:', err);
-        alert(err?.error || 'Error al conectar con el servidor.');
-        router.push('/examenes');
+
+        // MANEJO DE ERRORES ROBUSTO
+        if (err.status === 403) {
+          alert('No tienes permiso para acceder a este examen o ya pertenece a otro usuario.');
+          router.push('/examenes');
+        } else {
+          alert(err?.error || 'Error al conectar con el servidor.');
+          router.push('/examenes');
+        }
       } finally {
         setLoading(false);
       }
@@ -269,13 +282,28 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+
+      // Éxito: directo a resultados
       router.push(`/resultados/${curIntentoId}`);
     } catch (err: any) {
       console.error('Error al enviar examen:', err);
-      alert(err?.error || 'Ocurrió un error al enviar tus respuestas.');
-      setSubmitting(false);
-      setEsTimeout(false);
-      setMostrarConfirmacion(false);
+
+      // MANEJO DE ERRORES ROBUSTO: códigos semánticos del backend
+      if (err.error === 'CUENTA_MISMATCH') {
+        alert(
+          '⚠️ Error de seguridad: La cuenta actual no coincide con la que inició el examen. Por favor, asegúrate de estar logueado con el correo correcto.'
+        );
+        // No reseteamos "submitting" para que el usuario no intente reenviar con la cuenta errónea
+      } else if (err.error === 'INTENTO_YA_FINALIZADO') {
+        alert('Este examen ya fue enviado previamente.');
+        router.push(`/resultados/${curIntentoId}`);
+      } else {
+        // Error genérico (conexión, etc.)
+        alert(err?.error || 'Ocurrió un error al enviar tus respuestas. Verifica tu conexión.');
+        setSubmitting(false);
+        setEsTimeout(false);
+        setMostrarConfirmacion(false);
+      }
     }
   };
 

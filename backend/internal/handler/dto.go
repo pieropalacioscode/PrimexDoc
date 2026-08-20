@@ -180,11 +180,10 @@ type ComponenteData struct {
 	Porcentaje float64 `json:"porcentaje"` // Opcional, pero útil para el frontend
 }
 
-// AnaliticaFullResponse es la respuesta JSON principal que se envía al Frontend
 type AnaliticaFullResponse struct {
 	IntentoID     uuid.UUID        `json:"intento_id"`
-	Subpruebas    []AnaliticaData  `json:"subpruebas"`  // Antes decía por_subprueba
-	Componentes   []ComponenteData `json:"componentes"` // Antes decía por_componente
-	Debilidades   []string         `json:"debilidades"`
+	Subpruebas    []AnaliticaData  `json:"subpruebas"`
+	Componentes   []ComponenteData `json:"componentes"`
+	Debilidades   []string         `json:"debilidades"` 
 	Recomendacion string           `json:"recomendacion"`
 }

@@ -1,3 +1,4 @@
+//frontend > src > app > (dashboard) > resultados > [id] > page.tsx :
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -337,14 +338,20 @@ export default function ResultadoDetallePage() {
   // - Si solo hay 1 subprueba y pocos componentes, usamos subpruebas de
   //   todos modos; el RadarDominio flexible se encarga de rellenar ejes.
   // ============================================================
-  const usaComponentesParaRadar =
-    !(stats?.subpruebas && stats.subpruebas.length >= 3) &&
-    Boolean(stats?.componentes && stats.componentes.length >= 3);
 
+// 1. Detectar qué nivel de datos estamos usando para informar al usuario
+  const usaComponentesParaRadar = useMemo(() => {
+    const tieneSuficientesSubpruebas = (stats?.subpruebas?.length || 0) >= 3;
+    const tieneSuficientesComponentes = (stats?.componentes?.length || 0) >= 3;
+    
+    return !tieneSuficientesSubpruebas && tieneSuficientesComponentes;
+  }, [stats]);
+
+  // 2. Procesar la data para el Radar
   const radarData = useMemo(() => {
     if (!stats) return [];
 
-    // Si las subpruebas son variadas (3 o más), es el mejor resumen
+    // CASO A: 3 o más subpruebas (Vista ideal por Áreas)
     if (stats.subpruebas && stats.subpruebas.length >= 3) {
       return stats.subpruebas.map((s) => ({
         area: s.area,
@@ -352,23 +359,23 @@ export default function ResultadoDetallePage() {
       }));
     }
 
-    // Si no, intentamos usar componentes para que el radar tenga forma
+    // CASO B: Pocas subpruebas, pero suficientes componentes (Vista por Temas)
+    // Esto arregla el caso del examen 2018 que mencionaste.
     if (stats.componentes && stats.componentes.length >= 3) {
       return stats.componentes.map((c) => ({
-        area: c.componente,
+        area: c.componente, // Aquí usamos el nombre del componente como eje
         porcentaje: c.porcentaje,
       }));
     }
 
-    // Poca data (1 o 2 puntos): usamos subpruebas; el Radar flexible
-    // agrega los ejes fantasma que hagan falta.
+    // CASO C: Muy poca data en ambos (1 o 2 puntos)
+    // Usamos subpruebas y el RadarFlexible pondrá los ejes vacíos.
     return (stats.subpruebas || []).map((s) => ({
       area: s.area,
       porcentaje: s.porcentaje,
     }));
   }, [stats]);
-
-  // ============================================================
+    // ============================================================
   // ESTADO DE CARGA
   // ============================================================
 
@@ -522,28 +529,33 @@ export default function ResultadoDetallePage() {
              subpruebas / componentes)
         ==================================================== */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-          {/* COLUMNA 1: RADAR (subpruebas o, si no alcanzan, componentes) */}
+          {/* COLUMNA 1: RADAR INTELIGENTE */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h2 className="text-lg font-bold mb-2">Dominio de Capacidades</h2>
+            
+            {/* Subtítulo dinámico que explica la data al docente */}
             {stats && (
-              <p className="text-[10px] text-slate-400 mb-4 uppercase font-bold tracking-widest">
+              <p className="text-[10px] text-blue-600 mb-4 uppercase font-bold tracking-widest animate-in fade-in duration-500">
                 {usaComponentesParaRadar
-                  ? "Análisis por Componentes"
-                  : "Equilibrio por Subpruebas"}
+                  ? "Análisis por Componentes Temáticos"
+                  : "Equilibrio por Subpruebas Generales"}
               </p>
             )}
 
             {!stats ? (
               <div className="flex h-64 items-center justify-center gap-2 text-sm text-slate-400">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Cargando balance...
+                <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+                <p>Generando analítica avanzada...</p>
               </div>
             ) : radarData.length > 0 ? (
-              <RadarDominio data={radarData} />
+              /* Este componente ahora recibe la data filtrada por la lógica del useMemo */
+              <div className="flex h-64 items-center justify-center">
+                <RadarDominio data={radarData} />
+              </div>
             ) : (
-              <p className="text-center py-20 text-slate-400">
-                Generando mapa de calor...
-              </p>
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-2">
+                <p className="text-sm italic">No hay datos suficientes para el mapa de calor.</p>
+              </div>
             )}
           </div>
 

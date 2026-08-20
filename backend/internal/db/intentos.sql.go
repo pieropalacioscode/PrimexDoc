@@ -363,6 +363,57 @@ func (q *Queries) ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPor
 	return i, err
 }
 
+const obtenerIntentoPorIDSimple = `-- name: ObtenerIntentoPorIDSimple :one
+SELECT 
+    id, 
+    usuario_id, 
+    examen_id, 
+    modo, 
+    puntaje, 
+    total_preguntas, 
+    preguntas_correctas, 
+    preguntas_incorrectas, 
+    estado, 
+    iniciado_en, 
+    finalizado_en 
+FROM intentos_examen  -- <--- Cambia "intentos" por "intentos_examen"
+WHERE id = $1
+`
+
+type ObtenerIntentoPorIDSimpleRow struct {
+	ID                   pgtype.UUID        `json:"id"`
+	UsuarioID            pgtype.UUID        `json:"usuario_id"`
+	ExamenID             pgtype.UUID        `json:"examen_id"`
+	Modo                 string             `json:"modo"`
+	Puntaje              pgtype.Numeric     `json:"puntaje"`
+	TotalPreguntas       int32              `json:"total_preguntas"`
+	PreguntasCorrectas   int32              `json:"preguntas_correctas"`
+	PreguntasIncorrectas int32              `json:"preguntas_incorrectas"`
+	Estado               string             `json:"estado"`
+	IniciadoEn           pgtype.Timestamptz `json:"iniciado_en"`
+	FinalizadoEn         pgtype.Timestamptz `json:"finalizado_en"`
+}
+
+// Busca un intento sin filtrar por usuario para diagnóstico de seguridad
+func (q *Queries) ObtenerIntentoPorIDSimple(ctx context.Context, id pgtype.UUID) (ObtenerIntentoPorIDSimpleRow, error) {
+	row := q.db.QueryRow(ctx, obtenerIntentoPorIDSimple, id)
+	var i ObtenerIntentoPorIDSimpleRow
+	err := row.Scan(
+		&i.ID,
+		&i.UsuarioID,
+		&i.ExamenID,
+		&i.Modo,
+		&i.Puntaje,
+		&i.TotalPreguntas,
+		&i.PreguntasCorrectas,
+		&i.PreguntasIncorrectas,
+		&i.Estado,
+		&i.IniciadoEn,
+		&i.FinalizadoEn,
+	)
+	return i, err
+}
+
 const registrarRespuestaIntento = `-- name: RegistrarRespuestaIntento :exec
 INSERT INTO respuestas_intento (
     intento_id,

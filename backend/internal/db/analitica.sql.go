@@ -13,20 +13,23 @@ import (
 
 const obtenerAnaliticaDetalladaPorComponente = `-- name: ObtenerAnaliticaDetalladaPorComponente :many
 SELECT 
-    p.componente,
-    COUNT(ri.pregunta_id)::bigint as total,
-    COUNT(ri.pregunta_id) FILTER (WHERE ri.es_correcta = TRUE)::bigint as aciertos
+    COALESCE(NULLIF(p.componente, ''), 'General')::TEXT as componente,
+    COUNT(ri.id)::BIGINT as total,
+    SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as aciertos,
+    -- CAMBIO: Calculamos y devolvemos como FLOAT
+    ((SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(ri.id), 0)::FLOAT) * 100)::FLOAT as porcentaje
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
 WHERE ri.intento_id = $1
 GROUP BY p.componente
-ORDER BY aciertos ASC
+ORDER BY porcentaje ASC
 `
 
 type ObtenerAnaliticaDetalladaPorComponenteRow struct {
-	Componente pgtype.Text `json:"componente"`
-	Total      int64       `json:"total"`
-	Aciertos   int64       `json:"aciertos"`
+	Componente string  `json:"componente"`
+	Total      int64   `json:"total"`
+	Aciertos   int64   `json:"aciertos"`
+	Porcentaje float64 `json:"porcentaje"`
 }
 
 func (q *Queries) ObtenerAnaliticaDetalladaPorComponente(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerAnaliticaDetalladaPorComponenteRow, error) {
@@ -38,7 +41,12 @@ func (q *Queries) ObtenerAnaliticaDetalladaPorComponente(ctx context.Context, in
 	items := []ObtenerAnaliticaDetalladaPorComponenteRow{}
 	for rows.Next() {
 		var i ObtenerAnaliticaDetalladaPorComponenteRow
-		if err := rows.Scan(&i.Componente, &i.Total, &i.Aciertos); err != nil {
+		if err := rows.Scan(
+			&i.Componente,
+			&i.Total,
+			&i.Aciertos,
+			&i.Porcentaje,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -51,10 +59,11 @@ func (q *Queries) ObtenerAnaliticaDetalladaPorComponente(ctx context.Context, in
 
 const obtenerAnaliticaPorIntento = `-- name: ObtenerAnaliticaPorIntento :many
 SELECT 
-    p.subprueba,
-    COUNT(ri.pregunta_id)::bigint as total_preguntas,
-    COUNT(ri.pregunta_id) FILTER (WHERE ri.es_correcta = TRUE)::bigint as correctas,
-    (COUNT(ri.pregunta_id) FILTER (WHERE ri.es_correcta = TRUE)::float / COUNT(ri.pregunta_id)::float) * 100 as porcentaje_exito
+    COALESCE(NULLIF(p.subprueba, ''), 'General')::TEXT as subprueba,
+    COUNT(ri.id)::BIGINT as total_preguntas,
+    SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as correctas,
+    -- CAMBIO: Calculamos y devolvemos como FLOAT directamente
+    ((SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(ri.id), 0)::FLOAT) * 100)::FLOAT as porcentaje_exito
 FROM respuestas_intento ri
 JOIN preguntas p ON ri.pregunta_id = p.id
 WHERE ri.intento_id = $1
@@ -62,10 +71,10 @@ GROUP BY p.subprueba
 `
 
 type ObtenerAnaliticaPorIntentoRow struct {
-	Subprueba       pgtype.Text `json:"subprueba"`
-	TotalPreguntas  int64       `json:"total_preguntas"`
-	Correctas       int64       `json:"correctas"`
-	PorcentajeExito int32       `json:"porcentaje_exito"`
+	Subprueba       string  `json:"subprueba"`
+	TotalPreguntas  int64   `json:"total_preguntas"`
+	Correctas       int64   `json:"correctas"`
+	PorcentajeExito float64 `json:"porcentaje_exito"`
 }
 
 // Devuelve el rendimiento desglosado por subprueba (Comprensión, Razonamiento, etc.)

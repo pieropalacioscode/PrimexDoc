@@ -44,6 +44,8 @@ type Querier interface {
 	ObtenerAnaliticaPorIntento(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerAnaliticaPorIntentoRow, error)
 	ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerDetalleResultadoRow, error)
 	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
+	// Busca un intento sin filtrar por usuario para diagnóstico de seguridad
+	ObtenerIntentoPorIDSimple(ctx context.Context, id pgtype.UUID) (ObtenerIntentoPorIDSimpleRow, error)
 	// Para el gráfico de líneas (últimos 10 intentos)
 	ObtenerProgresoHistorico(ctx context.Context, usuarioID pgtype.UUID) ([]ObtenerProgresoHistoricoRow, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)

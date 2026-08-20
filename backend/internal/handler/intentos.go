@@ -100,49 +100,54 @@ func (h *IntentoHandler) IniciarIntento(w http.ResponseWriter, r *http.Request) 
 func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// 1. Extraer ID de usuario del contexto autenticado
+	// 1. Identidad del Usuario desde el Token
 	userIDStr, ok := auth.GetUserID(ctx)
-	if !ok || userIDStr == "" {
-		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "SESION_INVALIDA")
 		return
 	}
-	usuarioID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
-		return
-	}
+	usuarioID, _ := uuid.Parse(userIDStr)
 	pgUsuarioID := pgtype.UUID{Bytes: usuarioID, Valid: true}
 
-	// 2. Extraer ID del intento desde los parámetros de la URL (chi)
+	// 2. ID del Intento desde la URL
 	intentoIDStr := chi.URLParam(r, "id")
-	intentoID, err := uuid.Parse(intentoIDStr)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "ID de intento inválido")
-		return
-	}
+	intentoID, _ := uuid.Parse(intentoIDStr)
 	pgIntentoID := pgtype.UUID{Bytes: intentoID, Valid: true}
 
+	// 3. VALIDACIÓN ROBUSTA: Buscar el intento por ID únicamente
+	intentoDB, err := h.queries.ObtenerIntentoPorIDSimple(ctx, pgIntentoID) 
+	if err != nil {
+		respondError(w, http.StatusNotFound, "INTENTO_NO_EXISTE")
+		return
+	}
+
+	// COMPARACIÓN DE SEGURIDAD: ¿El dueño es el que está logueado?
+	// Comparamos los bytes de los UUIDs
+	if intentoDB.UsuarioID.Bytes != pgUsuarioID.Bytes {
+		respondError(w, http.StatusForbidden, "CUENTA_MISMATCH") 
+		return
+	}
+	// VALIDACIÓN DE ESTADO: ¿Ya se cerró?
+	// Dependiendo de tu SQLC, estado puede ser string o pgtype.Text
+	if intentoDB.Estado == "completado" {
+		respondError(w, http.StatusConflict, "INTENTO_YA_FINALIZADO")
+		return
+	}
+	// 4. Decodificar respuestas enviadas
 	var req FinalizarIntentoRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "Petición inválida")
+		respondError(w, http.StatusBadRequest, "DATOS_INVALIDOS")
 		return
 	}
 
-	intentoDB, err := h.queries.ObtenerIntentoPorID(ctx, db.ObtenerIntentoPorIDParams{
-		ID:        pgIntentoID,
-		UsuarioID: pgUsuarioID,
-	})
-	if err != nil {
-		respondError(w, http.StatusNotFound, "Intento no encontrado o no pertenece al usuario")
-		return
-	}
-
+	// 5. Lógica de Calificación
 	clavesDB, err := h.queries.GetClavesYExplicacionesByExamenID(ctx, intentoDB.ExamenID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Error al consultar la clave de respuestas")
+		respondError(w, http.StatusInternalServerError, "ERROR_CLAVES")
 		return
 	}
 
+	// Mapear claves para corrección rápida
 	claveMap := make(map[uuid.UUID]uuid.UUID)
 	for _, c := range clavesDB {
 		pID, _ := uuid.FromBytes(c.PreguntaID.Bytes[:])
@@ -156,10 +161,8 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	}
 
 	var correctas, incorrectas int32
-
 	for preguntaID, opcionCorrectaID := range claveMap {
 		opcionSeleccionadaPtr, respondida := mapaRespuestasEnviadas[preguntaID]
-
 		var pgOpcionSel pgtype.UUID
 		esCorrecta := false
 
@@ -173,6 +176,7 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 			}
 		}
 
+		// Registrar resultado de cada pregunta
 		_ = h.queries.RegistrarRespuestaIntento(ctx, db.RegistrarRespuestaIntentoParams{
 			IntentoID:            pgIntentoID,
 			PreguntaID:           pgtype.UUID{Bytes: preguntaID, Valid: true},
@@ -181,31 +185,32 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	puntaje := float64(correctas) * 2.0
-
-	var puntajeNumeric pgtype.Numeric
-	_ = puntajeNumeric.Scan(fmt.Sprintf("%.2f", puntaje))
+		// 6. Cálculo y guardado final
+		puntaje := float64(correctas) * 2.0 // Ajustar según tu regla de negocio
+		var puntajeNumeric pgtype.Numeric
+		puntajeNumeric.Scan(fmt.Sprintf("%.2f", puntaje))
 
 	err = h.queries.FinalizarIntento(ctx, db.FinalizarIntentoParams{
 		ID:                     pgIntentoID,
 		Puntaje:                puntajeNumeric,
 		PreguntasCorrectas:     correctas,
 		PreguntasIncorrectas:   incorrectas,
-		TiempoEmpleadoSegundos: int32(req.TiempoEmpleadoSegundos), // 👈 PASANDO EL TIEMPO EMPLEADO
+		TiempoEmpleadoSegundos: int32(req.TiempoEmpleadoSegundos),
 		UsuarioID:              pgUsuarioID,
 	})
+
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Error al finalizar el intento")
+		// 🔍 AÑADE ESTA LÍNEA DE LOG:
+		fmt.Printf("❌ ERROR FATAL EN DB (FinalizarIntento): %v\n", err)
+		
+		respondError(w, http.StatusInternalServerError, "ERROR_AL_FINALIZAR")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"mensaje":               "Simulacro finalizado con éxito",
-		"puntaje":               puntaje,
-		"preguntas_correctas":   correctas,
-		"preguntas_incorrectas": incorrectas,
-	})
-}
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"mensaje": "¡Simulacro finalizado!",
+			"puntaje": puntaje,
+		})
+	}
 
 // GET /api/v1/intentos
 func (h *IntentoHandler) ListarIntentos(w http.ResponseWriter, r *http.Request) {

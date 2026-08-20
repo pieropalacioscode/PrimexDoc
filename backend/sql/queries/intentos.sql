@@ -104,3 +104,20 @@ LEFT JOIN textos_base tb ON p.texto_base_id = tb.id
 LEFT JOIN opciones o_correcta ON o_correcta.pregunta_id = p.id AND o_correcta.es_correcta = TRUE
 WHERE ri.intento_id = $1
 ORDER BY p.numero_pregunta ASC;
+
+-- name: ObtenerIntentoPorIDSimple :one
+-- Busca un intento sin filtrar por usuario para diagnóstico de seguridad
+SELECT 
+    id, 
+    usuario_id, 
+    examen_id, 
+    modo, 
+    puntaje, 
+    total_preguntas, 
+    preguntas_correctas, 
+    preguntas_incorrectas, 
+    estado, 
+    iniciado_en, 
+    finalizado_en 
+FROM intentos_examen  -- <--- Cambia "intentos" por "intentos_examen"
+WHERE id = $1;
