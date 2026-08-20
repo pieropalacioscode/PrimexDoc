@@ -123,15 +123,6 @@ type ExamenesGuardado struct {
 	CreadoEn  pgtype.Timestamptz `json:"creado_en"`
 }
 
-type IntentoRespuesta struct {
-	ID                   pgtype.UUID        `json:"id"`
-	IntentoID            pgtype.UUID        `json:"intento_id"`
-	PreguntaID           pgtype.UUID        `json:"pregunta_id"`
-	OpcionSeleccionadaID pgtype.UUID        `json:"opcion_seleccionada_id"`
-	EsCorrecta           bool               `json:"es_correcta"`
-	RespondidoEn         pgtype.Timestamptz `json:"respondido_en"`
-}
-
 type IntentosExaman struct {
 	ID                     pgtype.UUID        `json:"id"`
 	UsuarioID              pgtype.UUID        `json:"usuario_id"`
@@ -184,7 +175,7 @@ type RespuestasIntento struct {
 	PreguntaID           pgtype.UUID        `json:"pregunta_id"`
 	OpcionSeleccionadaID pgtype.UUID        `json:"opcion_seleccionada_id"`
 	EsCorrecta           bool               `json:"es_correcta"`
-	CreadoEn             pgtype.Timestamptz `json:"creado_en"`
+	RespondidoEn         pgtype.Timestamptz `json:"respondido_en"`
 }
 
 type Suscripcione struct {

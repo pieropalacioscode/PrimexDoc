@@ -38,21 +38,9 @@ func main() {
 	}
 	defer db.Close()
 
-	// 🛠️ AUTOMIGRACIÓN: Crear/Actualizar tablas y agregar nuevas columnas si no existen
-	ddlAutoMigrate := `
-
-	CREATE TABLE IF NOT EXISTS textos_base (
-		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-		examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
-		codigo_texto_base VARCHAR(50) NOT NULL,
-		titulo VARCHAR(255),
-		contenido TEXT NOT NULL,
-		url_imagen TEXT,
-		creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-		CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
-	);
-
-		CREATE TABLE IF NOT EXISTS textos_base (
+	// 🛠️ AUTOMIGRACIÓN: Ejecutamos cada DDL de forma limpia e independiente para mayor robustez
+	migrations := []string{
+		`CREATE TABLE IF NOT EXISTS textos_base (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			examen_id UUID NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
 			codigo_texto_base VARCHAR(50) NOT NULL,
@@ -61,49 +49,35 @@ func main() {
 			url_imagen TEXT,
 			creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 			CONSTRAINT unique_codigo_texto_base_por_examen UNIQUE (examen_id, codigo_texto_base)
-		);
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_textos_base_examen ON textos_base(examen_id);`,
 
-	CREATE INDEX IF NOT EXISTS idx_textos_base_examen ON textos_base(examen_id);
+		// Columnas de examenes
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS acceso_pdf VARCHAR(50);`,
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS url_pdf_examen TEXT;`,
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS url_pdf_claves TEXT;`,
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS completo BOOLEAN DEFAULT TRUE;`,
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS fuente_habilidades_generales VARCHAR(255);`,
+		`ALTER TABLE examenes ADD COLUMN IF NOT EXISTS url_origen_habilidades_generales TEXT;`,
 
-	-- Agregar nuevas columnas a examenes
-	ALTER TABLE examenes 
-		-- Agregar nuevas columnas a examenes
-		ALTER TABLE examenes 
-		ADD COLUMN IF NOT EXISTS acceso_pdf VARCHAR(50),
-		ADD COLUMN IF NOT EXISTS url_pdf_examen TEXT,
-		ADD COLUMN IF NOT EXISTS url_pdf_claves TEXT,
-		ADD COLUMN IF NOT EXISTS completo BOOLEAN DEFAULT TRUE,
-		ADD COLUMN IF NOT EXISTS fuente_habilidades_generales VARCHAR(255),
-		ADD COLUMN IF NOT EXISTS url_origen_habilidades_generales TEXT;
-		-- Agregar nuevas columnas a textos_base
-		ALTER TABLE textos_base 
-		ADD COLUMN IF NOT EXISTS url_imagen TEXT;
+		// Columnas de textos_base
+		`ALTER TABLE textos_base ADD COLUMN IF NOT EXISTS url_imagen TEXT;`,
 
-		-- Agregar nuevas columnas a preguntas
-		ALTER TABLE preguntas 
-		ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL,
-		ADD COLUMN IF NOT EXISTS subprueba VARCHAR(100),
-		ADD COLUMN IF NOT EXISTS componente VARCHAR(100);
-
-	-- Agregar nuevas columnas a textos_base
-	ALTER TABLE textos_base 
-		ADD COLUMN IF NOT EXISTS url_imagen TEXT;
-
-	-- Agregar nuevas columnas a preguntas
-	ALTER TABLE preguntas 
-		ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL,
-		ADD COLUMN IF NOT EXISTS subprueba VARCHAR(100),
-		ADD COLUMN IF NOT EXISTS componente VARCHAR(100);
-
-	CREATE INDEX IF NOT EXISTS idx_preguntas_texto_base ON preguntas(texto_base_id);
-	`
-
-	_, err = db.Exec(ddlAutoMigrate)
-	if err != nil {
-		log.Fatalf("❌ Error preparando las tablas en la base de datos: %v", err)
+		// Columnas de preguntas
+		`ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS texto_base_id UUID REFERENCES textos_base(id) ON DELETE SET NULL;`,
+		`ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS subprueba VARCHAR(100);`,
+		`ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS componente VARCHAR(100);`,
+		`CREATE INDEX IF NOT EXISTS idx_preguntas_texto_base ON preguntas(texto_base_id);`,
 	}
 
-	// Iniciar Transacción
+	for _, stmt := range migrations {
+		_, err := db.Exec(stmt)
+		if err != nil {
+			log.Fatalf("❌ Error preparando la base de datos: %v\nSentencia: %s", err, stmt)
+		}
+	}
+
+	// Iniciar Transacción para la importación
 	tx, err := db.Begin()
 	if err != nil {
 		log.Fatalf("❌ Error iniciando transacción: %v", err)
@@ -139,7 +113,6 @@ func main() {
 	anioExamen, _ := strconv.Atoi(colExamen["anio"])
 	duracionMinutos, _ := strconv.Atoi(colExamen["duracion_minutos"])
 
-	// Campos adicionales de examenes
 	accesoPdf := colExamen["acceso_pdf"]
 	urlPdfExamen := colExamen["url_pdf_examen"]
 	urlPdfClaves := colExamen["url_pdf_claves"]
@@ -156,11 +129,6 @@ func main() {
 	queryExamen := `
 		INSERT INTO examenes (
 			titulo, codigo_cuadernillo, descripcion, nivel, tipo, anio, duracion_minutos,
-			acceso_pdf, url_pdf_examen, url_pdf_claves, completo,
-			fuente_habilidades_generales, url_origen_habilidades_generales
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (codigo_cuadernillo)
-		DO UPDATE SET
 			acceso_pdf, url_pdf_examen, url_pdf_claves, completo, fuente_habilidades_generales, url_origen_habilidades_generales
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (codigo_cuadernillo) DO UPDATE SET
@@ -178,13 +146,11 @@ func main() {
 			url_origen_habilidades_generales = EXCLUDED.url_origen_habilidades_generales
 		RETURNING id;
 	`
-
 	err = tx.QueryRow(
 		queryExamen,
 		tituloExamen, codigoCuadernillo, descripcionExamen, nivelExamen, tipoExamen, anioExamen, duracionMinutos,
 		accesoPdf, urlPdfExamen, urlPdfClaves, completo, fuenteHabilidades, urlOrigenHabilidades,
 	).Scan(&examenID)
-
 	if err != nil {
 		log.Fatalf("❌ Error guardando el examen: %v", err)
 	}
@@ -246,7 +212,7 @@ func main() {
 	fmt.Printf("✅ %d textos base procesados.\n", len(mapaTextos))
 
 	// ----------------------------------------------------
-	// HOJA 3: "preguntas" y "opciones"
+	// HOJA 3: "preguntas"
 	// ----------------------------------------------------
 	rowsPreguntas, err := f.GetRows("preguntas")
 	if err != nil {
@@ -358,9 +324,6 @@ func main() {
 	}
 
 	fmt.Println("\n🚀 ¡IMPORTACIÓN EN GO COMPLETADA CON ÉXITO!")
-	fmt.Printf(" • Examen ID: %s (%s)\n", examenID, codigoCuadernillo)
-	fmt.Printf(" • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
-	fmt.Printf(" • Opciones insertadas: %d\n", opcionesCount)
 	fmt.Printf("   • Examen ID: %s (%s)\n", examenID, codigoCuadernillo)
 	fmt.Printf("   • Preguntas cargadas/actualizadas: %d\n", preguntasCount)
 	fmt.Printf("   • Opciones insertadas: %d\n", opcionesCount)

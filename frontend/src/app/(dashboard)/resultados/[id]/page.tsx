@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchAPI } from "@/services/api";
@@ -42,6 +42,7 @@ export interface DetallePregunta {
   opcion_correcta_id: string;
   es_correcta: boolean;
   opciones_json: OpcionResultado[];
+  componente?: string | null;
 }
 
 export interface ResumenResultado {
@@ -54,6 +55,164 @@ export interface ResumenResultado {
   preguntas_incorrectas?: number;
   respuestas_omitidas?: number;
   tiempo_empleado_segundos?: number;
+}
+
+// Punto de dominio por área temática (subprueba), tal como lo envía el backend
+export interface AnaliticaData {
+  area: string;
+  porcentaje: number;
+  correctas?: number;
+  total?: number;
+}
+
+// Dominio por componente pedagógico específico
+export interface ComponenteData {
+  componente: string;
+  aciertos: number;
+  total: number;
+  porcentaje: number;
+}
+
+// Respuesta completa del endpoint /analitica/intento/:id
+export interface AnaliticaFullResponse {
+  intento_id: string;
+  subpruebas: AnaliticaData[];
+  componentes: ComponenteData[];
+  debilidades: string[];
+  recomendacion: string;
+}
+
+// ============================================================
+// COMPONENTE: RADAR DE DOMINIO (SVG puro, sin librerías externas)
+// ============================================================
+
+function RadarDominio({ data }: { data: AnaliticaData[] }) {
+  // Si no hay datos, no mostramos nada
+  if (!data || data.length === 0) return null;
+
+  // Lógica Flexible: si hay pocos puntos, agregamos ejes fantasma (sin
+  // etiqueta, en 0%) para que el SVG siempre pueda formar un polígono/telaraña.
+  // - 1 punto -> agregamos 2 ejes fantasma (forma un triángulo)
+  // - 2 puntos -> agregamos 1 eje fantasma
+  let visualData = data;
+  if (data.length === 1) {
+    visualData = [
+      ...data,
+      { area: "", porcentaje: 0 },
+      { area: "", porcentaje: 0 },
+    ];
+  } else if (data.length === 2) {
+    visualData = [...data, { area: "", porcentaje: 0 }];
+  }
+
+  const size = 320;
+  const center = size / 2;
+  const radius = size / 2 - 50;
+  const niveles = 4; // anillos de fondo (25%, 50%, 75%, 100%)
+  const angleStep = (Math.PI * 2) / visualData.length;
+
+  const puntoEn = (indice: number, valorPorcentaje: number) => {
+    const angulo = angleStep * indice - Math.PI / 2;
+    const r = (valorPorcentaje / 100) * radius;
+    return {
+      x: center + r * Math.cos(angulo),
+      y: center + r * Math.sin(angulo),
+    };
+  };
+
+  const puntosPoligono = visualData
+    .map((d, i) => {
+      const p = puntoEn(i, d.porcentaje);
+      return `${p.x},${p.y}`;
+    })
+    .join(" ");
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full overflow-visible">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="overflow-visible"
+      >
+        {/* Anillos de fondo (Telaraña) */}
+        {Array.from({ length: niveles }).map((_, nivel) => {
+          const r = (radius / niveles) * (nivel + 1);
+          const puntosAnillo = visualData
+            .map((_, i) => {
+              const angulo = angleStep * i - Math.PI / 2;
+              return `${center + r * Math.cos(angulo)},${
+                center + r * Math.sin(angulo)
+              }`;
+            })
+            .join(" ");
+          return (
+            <polygon
+              key={nivel}
+              points={puntosAnillo}
+              fill="none"
+              stroke="#e2e8f0"
+              strokeWidth={1}
+            />
+          );
+        })}
+
+        {/* Ejes radiales */}
+        {visualData.map((_, i) => {
+          const p = puntoEn(i, 100);
+          return (
+            <line
+              key={i}
+              x1={center}
+              y1={center}
+              x2={p.x}
+              y2={p.y}
+              stroke="#e2e8f0"
+              strokeWidth={1}
+              strokeDasharray={visualData[i].area === "" ? "4 4" : "0"}
+            />
+          );
+        })}
+
+        {/* Área de Dominio (el gráfico real) */}
+        <polygon
+          points={puntosPoligono}
+          fill="rgba(37, 99, 235, 0.2)"
+          stroke="#2563eb"
+          strokeWidth={3}
+          strokeLinejoin="round"
+        />
+
+        {/* Etiquetas con manejo de texto largo */}
+        {visualData.map((d, i) => {
+          if (d.area === "") return null;
+          const p = puntoEn(i, 115);
+          return (
+            <g key={i}>
+              <text
+                x={p.x}
+                y={p.y}
+                textAnchor="middle"
+                className="fill-slate-600 font-bold"
+                fontSize={10}
+              >
+                {d.area.length > 20 ? d.area.substring(0, 18) + "..." : d.area}
+              </text>
+              <text
+                x={p.x}
+                y={p.y + 12}
+                textAnchor="middle"
+                className="fill-blue-600 font-black"
+                fontSize={11}
+              >
+                {Math.round(d.porcentaje)}%
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
 }
 
 // ============================================================
@@ -71,10 +230,14 @@ export default function ResultadoDetallePage() {
   const [resumen, setResumen] = useState<ResumenResultado | null>(null);
   const [preguntas, setPreguntas] = useState<DetallePregunta[]>([]);
 
+  // Analítica de dominio por componente (Radar + Semáforo)
+  const [stats, setStats] = useState<AnaliticaFullResponse | null>(null);
+
   // Estados de UI / Filtros
   const [filtroEstado, setFiltroEstado] = useState<
     "todas" | "correctas" | "incorrectas" | "omitidas"
   >("todas");
+  const [filtroComponente, setFiltroComponente] = useState<string>("TODOS");
   const [textosExpandidos, setTextosExpandidos] = useState<{
     [key: string]: boolean;
   }>({});
@@ -113,6 +276,24 @@ export default function ResultadoDetallePage() {
     cargarResultado();
   }, [id]);
 
+  // Petición independiente al endpoint de analítica (no bloquea la vista principal)
+  useEffect(() => {
+    const cargarAnalitica = async () => {
+      try {
+        // fetchAPI ya maneja el Bearer Token automáticamente
+        // El JSON del backend usa "subpruebas" (plural) y "componentes"
+        const data = await fetchAPI<AnaliticaFullResponse>(
+          `/analitica/intento/${params.id}`
+        );
+        console.log("Stats recibidas:", data);
+        setStats(data);
+      } catch (err) {
+        console.error("Error cargando analítica:", err);
+      }
+    };
+    cargarAnalitica();
+  }, [params.id]);
+
   // Toggle de texto de apoyo individual
   const toggleTextoBase = (preguntaId: string) => {
     setTextosExpandidos((prev) => ({
@@ -121,14 +302,71 @@ export default function ResultadoDetallePage() {
     }));
   };
 
-  // Filtrado dinámico de preguntas
+  // Lista única de componentes presentes en las preguntas (para los chips)
+  const componentesDisponibles = Array.from(
+    new Set(
+      preguntas
+        .map((p) => p.componente)
+        .filter((c): c is string => Boolean(c && c.trim().length > 0))
+    )
+  );
+
+  // Filtrado dinámico de preguntas (estado + componente combinados)
   const preguntasFiltradas = preguntas.filter((item) => {
-    if (filtroEstado === "correctas") return item.es_correcta;
-    if (filtroEstado === "incorrectas")
-      return !item.es_correcta && Boolean(item.opcion_seleccionada_id);
-    if (filtroEstado === "omitidas") return !item.opcion_seleccionada_id;
-    return true;
+    // Filtro por estado (correcta / incorrecta / omitida)
+    let pasaEstado = true;
+    if (filtroEstado === "correctas") pasaEstado = item.es_correcta;
+    else if (filtroEstado === "incorrectas")
+      pasaEstado = !item.es_correcta && Boolean(item.opcion_seleccionada_id);
+    else if (filtroEstado === "omitidas")
+      pasaEstado = !item.opcion_seleccionada_id;
+
+    // Filtro por componente / área temática
+    const pasaComponente =
+      filtroComponente === "TODOS" || item.componente === filtroComponente;
+
+    return pasaEstado && pasaComponente;
   });
+
+  // ============================================================
+  // DATA PARA EL RADAR: decide qué usar para que el gráfico no se
+  // vea vacío cuando el examen solo tiene 1 subprueba (ej. examen 2018)
+  // Prioridad:
+  // - Si hay >= 3 subpruebas, usamos subpruebas (mejor resumen).
+  // - Si no, usamos componentes (suelen ser más y dan más forma al radar).
+  // - Si solo hay 1 subprueba y pocos componentes, usamos subpruebas de
+  //   todos modos; el RadarDominio flexible se encarga de rellenar ejes.
+  // ============================================================
+  const usaComponentesParaRadar =
+    !(stats?.subpruebas && stats.subpruebas.length >= 3) &&
+    Boolean(stats?.componentes && stats.componentes.length >= 3);
+
+  const radarData = useMemo(() => {
+    if (!stats) return [];
+
+    // Si las subpruebas son variadas (3 o más), es el mejor resumen
+    if (stats.subpruebas && stats.subpruebas.length >= 3) {
+      return stats.subpruebas.map((s) => ({
+        area: s.area,
+        porcentaje: s.porcentaje,
+      }));
+    }
+
+    // Si no, intentamos usar componentes para que el radar tenga forma
+    if (stats.componentes && stats.componentes.length >= 3) {
+      return stats.componentes.map((c) => ({
+        area: c.componente,
+        porcentaje: c.porcentaje,
+      }));
+    }
+
+    // Poca data (1 o 2 puntos): usamos subpruebas; el Radar flexible
+    // agrega los ejes fantasma que hagan falta.
+    return (stats.subpruebas || []).map((s) => ({
+      area: s.area,
+      porcentaje: s.porcentaje,
+    }));
+  }, [stats]);
 
   // ============================================================
   // ESTADO DE CARGA
@@ -279,9 +517,76 @@ export default function ResultadoDetallePage() {
         )}
 
         {/* ====================================================
-            BARRA DE FILTROS DE PREGUNTAS
+            PANEL DE ANALÍTICA
+            (usa los nombres reales que envía el backend:
+             subpruebas / componentes)
         ==================================================== */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+          {/* COLUMNA 1: RADAR (subpruebas o, si no alcanzan, componentes) */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h2 className="text-lg font-bold mb-2">Dominio de Capacidades</h2>
+            {stats && (
+              <p className="text-[10px] text-slate-400 mb-4 uppercase font-bold tracking-widest">
+                {usaComponentesParaRadar
+                  ? "Análisis por Componentes"
+                  : "Equilibrio por Subpruebas"}
+              </p>
+            )}
+
+            {!stats ? (
+              <div className="flex h-64 items-center justify-center gap-2 text-sm text-slate-400">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Cargando balance...
+              </div>
+            ) : radarData.length > 0 ? (
+              <RadarDominio data={radarData} />
+            ) : (
+              <p className="text-center py-20 text-slate-400">
+                Generando mapa de calor...
+              </p>
+            )}
+          </div>
+
+          {/* COLUMNA 2: SEMÁFORO DE DEBILIDADES POR COMPONENTE */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h2 className="text-lg font-bold mb-4">Diagnóstico Smart</h2>
+            {stats?.componentes && stats.componentes.length > 0 ? (
+              <div className="space-y-3">
+                {stats.componentes.map((c) => (
+                  <div
+                    key={c.componente}
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">
+                        {c.componente}
+                      </p>
+                      <p className="text-[10px] text-slate-500 uppercase">
+                        {c.aciertos} de {c.total} aciertos
+                      </p>
+                    </div>
+                    <div
+                      className={`text-sm font-black ${
+                        c.porcentaje < 50 ? "text-red-500" : "text-emerald-500"
+                      }`}
+                    >
+                      {Math.round(c.porcentaje)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-400 text-center py-10">
+                Aún no hay datos suficientes para el diagnóstico.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ====================================================
+            BARRA DE FILTROS DE PREGUNTAS (ESTADO)
+        ==================================================== */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
             <Filter size={18} className="text-slate-400" />
             <span>Filtrar por:</span>
@@ -305,6 +610,38 @@ export default function ResultadoDetallePage() {
             )}
           </div>
         </div>
+
+        {/* ====================================================
+            BARRA DE FILTROS POR COMPONENTE / ÁREA TEMÁTICA
+            (Solo se muestra si el backend envía el campo `componente`)
+        ==================================================== */}
+        {componentesDisponibles.length > 0 && (
+          <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+            <button
+              onClick={() => setFiltroComponente("TODOS")}
+              className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition-all ${
+                filtroComponente === "TODOS"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Todos los componentes
+            </button>
+            {componentesDisponibles.map((c) => (
+              <button
+                key={c}
+                onClick={() => setFiltroComponente(c)}
+                className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition-all ${
+                  filtroComponente === c
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ====================================================
             LISTA DE PREGUNTAS
@@ -343,9 +680,16 @@ export default function ResultadoDetallePage() {
                         : "bg-rose-50 text-rose-700"
                     }`}
                   >
-                    <span className="text-xs font-black uppercase tracking-widest">
-                      Pregunta {item.numero_pregunta}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-widest">
+                        Pregunta {item.numero_pregunta}
+                      </span>
+                      {item.componente && (
+                        <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          {item.componente}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-2 text-sm font-bold">
                       {item.es_correcta ? (

@@ -6,7 +6,7 @@ import {
   getAnaliticaIntento,
   AnaliticaIntento,
 } from "@/services/historialService";
-import { RadarDesempeño } from "@/components/analytics/RadarDesempeño";
+import { RadarDominio } from "@/components/analytics/RadarDominio";
 import {
   AlertCircle,
   Lightbulb,
@@ -111,15 +111,23 @@ export default function AnaliticaPage() {
 
       {/* BLOQUE PRINCIPAL: RADAR + RECOMENDACIÓN SMART */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* GRÁFICO RADAR */}
+        {/* GRÁFICO RADAR FLEXIBLE */}
         <div className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2 sm:p-8">
           <h3 className="mb-6 flex items-center gap-2 text-xl font-bold text-slate-800">
             <TrendingUp className="text-blue-600" size={24} />
             Equilibrio de Capacidades
           </h3>
-          <div className="flex min-h-[320px] items-center justify-center">
-            <RadarDesempeño data={data.por_subprueba} />
+
+          <div className="flex min-h-[350px] w-full items-center justify-center">
+            {/* RadarDominio ya acepta 2 o más áreas, así que no necesitamos
+                el fallback de barras que usábamos con RadarDesempeño. */}
+            <RadarDominio data={data.por_subprueba} />
           </div>
+
+          <p className="mt-4 text-center text-[10px] italic text-slate-400">
+            Este gráfico muestra tu nivel de dominio actual basado en las
+            respuestas correctas por subprueba.
+          </p>
         </div>
 
         {/* TARJETA DE RECOMENDACIÓN */}

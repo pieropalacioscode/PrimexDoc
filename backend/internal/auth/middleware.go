@@ -1,3 +1,4 @@
+// backend > internal > auth > middleware.go
 package auth
 
 import (
@@ -87,13 +88,14 @@ func RequireAdmin(next http.Handler) http.Handler {
 	})
 }
 
-// PaywallError define la estructura del error
+// PaywallError define la estructura del error para el frontend
 type PaywallError struct {
 	Error     string `json:"error"`
 	Code      string `json:"code"`
 	ActionURL string `json:"action_url"`
 }
 
+// RequireSubscription verifica que el usuario tenga un plan activo o sea admin
 func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +105,6 @@ func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 2. CORRECCIÓN DE UUID
 			parsedID, err := uuid.Parse(userIDStr)
 			if err != nil {
 				http.Error(w, `{"error": "ID de usuario inválido"}`, http.StatusBadRequest)
@@ -117,7 +118,7 @@ func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 3. CORRECCIÓN DE TIPO: pgtype.Text requiere .String para comparar
+			// Bypass inmediato para Administradores
 			if usuario.Rol.String == "admin" {
 				next.ServeHTTP(w, r)
 				return
@@ -126,11 +127,10 @@ func RequireSubscription(queries *db.Queries) func(http.Handler) http.Handler {
 			// Verificación de fecha de vencimiento
 			ahora := time.Now().UTC()
 			fechaVencimiento := usuario.SuscripcionHasta.Time.UTC()
-			
 			estaActivo := usuario.SuscripcionHasta.Valid && fechaVencimiento.After(ahora)
 
 			if !estaActivo {
-				fmt.Printf("⚠️ ACCESO DENEGADO: %s | Vence: %s\n", 
+				fmt.Printf("⚠️ ACCESO DENEGADO: %s | Vence: %s\n",
 					usuario.Correo, fechaVencimiento.Format("2006-01-02"))
 
 				w.Header().Set("Content-Type", "application/json")

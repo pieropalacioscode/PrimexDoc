@@ -181,13 +181,13 @@ export default function MisResultadosPage() {
 
                 <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                   {/* Botón Diagnóstico Pro (Frena la propagación del clic) */}
-                  <button
+                  {/* <button ESTO SERA UNA IMPLEMENTACION PARA USUARIOS PRO CON UNA NALITICA PREMIUM CON IA INTEGRADA
                     onClick={(e) => irADiagnostico(e, intento.id)}
                     className="flex-1 sm:flex-none p-3.5 sm:p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-200 flex items-center justify-center group/btn"
                     title="Ver Diagnóstico Pro"
                   >
                     <BarChart3 size={20} className="group-hover/btn:scale-110 transition-transform" />
-                  </button>
+                  </button> */}
                   
                   {/* Flecha visual indicativa */}
                   <div className="flex-1 sm:flex-none p-3.5 sm:p-3 bg-white border-2 border-slate-200 text-slate-400 rounded-xl group-hover:border-blue-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all flex items-center justify-center pointer-events-none">

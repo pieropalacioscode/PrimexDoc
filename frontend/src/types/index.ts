@@ -75,16 +75,21 @@ export interface Pregunta {
   numero?: number;
   numero_pregunta?: number;
   
-  // Soporte dual para enunciados/preguntas
+  // Contenido principal
   texto_pregunta?: string;
   enunciado?: string;                   // Retrocompatibilidad
-  contexto?: string;                    // Caso pedagógico o situación previa
+  contexto?: string;                    // Situación previa
   
+  // Metadatos MINEDU (Fase 13 - Lo nuevo)
+  subprueba?: string | null;            // Ej: "Conocimientos Pedagógicos..."
+  componente?: string | null;           // Ej: "Evaluación", "Planificación"
+  
+  // Soporte de Media y Retroalimentación
   texto_base_id?: string | null;
   url_imagen?: string | null;
   explicacion?: string | null;
   
-  // Soporte dual para listas de alternativas u opciones
+  // Estructuras de respuesta
   opciones?: Opcion[];
   alternativas?: Alternativa[] | Opcion[]; // Retrocompatibilidad
 }
@@ -116,6 +121,7 @@ export interface ExamenCompleto extends Omit<Examen, 'nivel' | 'tipo' | 'anio'> 
 export interface ExamenDetalle extends Examen {
   id:string;
   titulo:string;
+  duracion_minutos:number;
   textos_base?: TextoBase[];
   preguntas: Pregunta[];
 }

@@ -90,29 +90,43 @@ function normalizarAArray<T = any>(valor: any): T[] {
 // sin importar de qué endpoint vino el dato.
 // ==========================================
 function adaptarExamen(data: any): ExamenDetalle {
+  if (!data) return {} as ExamenDetalle;
+
   return {
     ...data,
+    // Normalizamos el array de preguntas
     preguntas: normalizarAArray(data?.preguntas).map((p: any) => ({
       id: p.id,
-      numero_pregunta: p.numero || p.numero_pregunta,
-      // Prioriza texto_pregunta (simulacro), luego texto (entrenamiento), luego enunciado (fallback)
-      texto_pregunta: p.texto_pregunta || p.texto || p.enunciado || '',
-      url_imagen: p.url_imagen || p.imagen_url,
+      numero_pregunta: p.numero || p.numero_pregunta || 0,
+      
+      // Lógica de texto con fallback robusto
+      texto_pregunta: (p.texto_pregunta || p.texto || p.enunciado || '').trim(),
+      
+      url_imagen: p.url_imagen || p.imagen_url || null,
       explicacion: p.explicacion || '',
-      texto_base_id: p.texto_base_id,
-      subprueba: p.subprueba,
-      componente: p.componente,
+      texto_base_id: p.texto_base_id || null,
+
+      // --- DATA ENRIQUECIDA MINEDU ---
+      // Si el campo no viene, ponemos "General" para no romper los filtros de la UI
+      subprueba: (p.subprueba || 'Habilidades Generales').trim(),
+      componente: (p.componente || 'Sin Categoría').trim(),
+
+      // Normalizamos las opciones
       opciones: normalizarAArray(p.opciones || p.alternativas).map((o: any) => ({
         id: o.id,
-        etiqueta: o.etiqueta || o.letra,
-        texto_opcion: o.texto_opcion || o.texto || '',
+        etiqueta: o.etiqueta || o.letra || '',
+        texto_opcion: (o.texto_opcion || o.texto || '').trim(),
         es_correcta: !!o.es_correcta,
       })),
     })),
-    textos_base: normalizarAArray(data?.textos_base),
+
+    // Normalizamos textos base (casos pedagógicos)
+    textos_base: normalizarAArray(data?.textos_base).map((tb: any) => ({
+      ...tb,
+      contenido: tb.contenido || tb.texto || ''
+    })),
   } as ExamenDetalle;
 }
-
 // ==========================================
 // COMPONENTE PRINCIPAL
 // ==========================================

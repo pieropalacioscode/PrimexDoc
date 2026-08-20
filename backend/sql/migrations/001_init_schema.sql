@@ -1,3 +1,5 @@
+
+--sql.migrations001_init_schema.sql:
 -- Habilitar extensión UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -89,7 +91,7 @@ CREATE TABLE intentos (
 );
 
 -- 7. Respuestas por Intento
-CREATE TABLE intento_respuestas (
+CREATE TABLE respuestas_intento (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     intento_id UUID REFERENCES intentos(id) ON DELETE CASCADE,
     pregunta_id UUID REFERENCES preguntas(id) ON DELETE CASCADE,
@@ -118,6 +120,37 @@ CREATE TABLE password_resets (
 
 );
 
+-- 1. ANALÍTICA MACRO (Radar)
+-- name: GetAnaliticaSubprueba :many
+SELECT 
+    COALESCE(NULLIF(p.subprueba, ''), 'General')::TEXT as subprueba,
+    COUNT(ri.id)::BIGINT as total_preguntas,
+    SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as correctas,
+    -- Forzamos a BIGINT después del ROUND para evitar decimales en Go
+    ROUND(
+        (SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ri.id), 0)::float) * 100
+    )::BIGINT as porcentaje_exito
+FROM respuestas_intento ri
+JOIN preguntas p ON ri.pregunta_id = p.id
+WHERE ri.intento_id = $1
+GROUP BY p.subprueba;
+
+-- name: GetAnaliticaComponente :many
+SELECT 
+    COALESCE(NULLIF(p.componente, ''), 'General')::TEXT as componente,
+    COUNT(ri.id)::BIGINT as total,
+    SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as aciertos,
+    -- Mismo casting aquí para robustez
+    ROUND(
+        (SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ri.id), 0)::float) * 100
+    )::BIGINT as porcentaje
+FROM respuestas_intento ri
+JOIN preguntas p ON ri.pregunta_id = p.id
+WHERE ri.intento_id = $1
+GROUP BY p.componente
+ORDER BY porcentaje ASC;
+
 CREATE INDEX idx_password_resets_valido ON password_resets(correo, codigo) WHERE usado = FALSE;
 ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS subprueba VARCHAR(255) DEFAULT '';
 ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS componente VARCHAR(255) DEFAULT '';
+
