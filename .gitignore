@@ -1,4 +1,3 @@
-cat << 'EOF' > .gitignore
 # Variables de entorno (¡Crítico no subir contraseñas!)
 .env
 .env.local
@@ -16,15 +15,12 @@ backend/primexdoc-api
 backend/*.exe
 backend/*.out
 backend/bin/
+backend/api
+
+# Archivos Excel
+*.xlsx
 
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
-EOF
-
 *:Zone.Identifier
-*.xlsx
-
-# Go binaries
-backend/api
-
