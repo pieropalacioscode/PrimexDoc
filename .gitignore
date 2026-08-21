@@ -23,6 +23,8 @@ Thumbs.db
 EOF
 
 *:Zone.Identifier
+*.xlsx
 
 # Go binaries
 backend/api
+
