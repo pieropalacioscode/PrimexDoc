@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const eliminarIntento = `-- name: EliminarIntento :exec
+DELETE FROM intentos_examen
+WHERE id = $1 AND usuario_id = $2
+`
+
+type EliminarIntentoParams struct {
+	ID        pgtype.UUID `json:"id"`
+	UsuarioID pgtype.UUID `json:"usuario_id"`
+}
+
+func (q *Queries) EliminarIntento(ctx context.Context, arg EliminarIntentoParams) error {
+	_, err := q.db.Exec(ctx, eliminarIntento, arg.ID, arg.UsuarioID)
+	return err
+}
+
 const finalizarIntento = `-- name: FinalizarIntento :exec
 UPDATE intentos_examen
 SET 

@@ -115,7 +115,7 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	pgIntentoID := pgtype.UUID{Bytes: intentoID, Valid: true}
 
 	// 3. VALIDACIÓN ROBUSTA: Buscar el intento por ID únicamente
-	intentoDB, err := h.queries.ObtenerIntentoPorIDSimple(ctx, pgIntentoID) 
+	intentoDB, err := h.queries.ObtenerIntentoPorIDSimple(ctx, pgIntentoID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "INTENTO_NO_EXISTE")
 		return
@@ -124,7 +124,7 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	// COMPARACIÓN DE SEGURIDAD: ¿El dueño es el que está logueado?
 	// Comparamos los bytes de los UUIDs
 	if intentoDB.UsuarioID.Bytes != pgUsuarioID.Bytes {
-		respondError(w, http.StatusForbidden, "CUENTA_MISMATCH") 
+		respondError(w, http.StatusForbidden, "CUENTA_MISMATCH")
 		return
 	}
 	// VALIDACIÓN DE ESTADO: ¿Ya se cerró?
@@ -185,10 +185,10 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-		// 6. Cálculo y guardado final
-		puntaje := float64(correctas) * 2.0 // Ajustar según tu regla de negocio
-		var puntajeNumeric pgtype.Numeric
-		puntajeNumeric.Scan(fmt.Sprintf("%.2f", puntaje))
+	// 6. Cálculo y guardado final
+	puntaje := float64(correctas) * 2.0 // Ajustar según tu regla de negocio
+	var puntajeNumeric pgtype.Numeric
+	puntajeNumeric.Scan(fmt.Sprintf("%.2f", puntaje))
 
 	err = h.queries.FinalizarIntento(ctx, db.FinalizarIntentoParams{
 		ID:                     pgIntentoID,
@@ -202,15 +202,15 @@ func (h *IntentoHandler) FinalizarIntento(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		// 🔍 AÑADE ESTA LÍNEA DE LOG:
 		fmt.Printf("❌ ERROR FATAL EN DB (FinalizarIntento): %v\n", err)
-		
+
 		respondError(w, http.StatusInternalServerError, "ERROR_AL_FINALIZAR")
 		return
 	}
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"mensaje": "¡Simulacro finalizado!",
-			"puntaje": puntaje,
-		})
-	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"mensaje": "¡Simulacro finalizado!",
+		"puntaje": puntaje,
+	})
+}
 
 // GET /api/v1/intentos
 func (h *IntentoHandler) ListarIntentos(w http.ResponseWriter, r *http.Request) {
@@ -557,4 +557,42 @@ func (h *IntentoHandler) ObtenerResultadoDetalle(w http.ResponseWriter, r *http.
 		"resumen":   resumenDTO,
 		"preguntas": preguntasFormateadas,
 	})
+}
+
+// DELETE /api/v1/intentos/{id}
+func (h *IntentoHandler) EliminarIntento(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// 1. Obtener el ID del usuario del token JWT
+	userIDStr, ok := auth.GetUserID(ctx)
+	if !ok || userIDStr == "" {
+		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+		return
+	}
+	usuarioUUID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
+		return
+	}
+
+	// 2. Obtener el ID del intento desde los parámetros URL
+	intentoIDStr := chi.URLParam(r, "id")
+	intentoUUID, err := uuid.Parse(intentoIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ID de intento inválido")
+		return
+	}
+
+	// 3. Ejecutar la consulta SQL de eliminación
+	err = h.queries.EliminarIntento(ctx, db.EliminarIntentoParams{
+		ID:        pgtype.UUID{Bytes: intentoUUID, Valid: true},
+		UsuarioID: pgtype.UUID{Bytes: usuarioUUID, Valid: true},
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Error al eliminar el intento")
+		return
+	}
+
+	// 4. Responder con éxito
+	respondJSON(w, http.StatusOK, map[string]string{"mensaje": "Intento eliminado correctamente"})
 }

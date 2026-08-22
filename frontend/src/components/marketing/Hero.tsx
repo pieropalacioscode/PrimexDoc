@@ -1,3 +1,5 @@
+//frontend > src > components > marketing > Hero.tsx
+
 import Link from 'next/link';
 import { Rocket, ShieldCheck, PieChart } from 'lucide-react';
 

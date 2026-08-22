@@ -82,6 +82,7 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 				r.Get("/{id}", intentoH.ObtenerIntentoPorID)
 				r.Get("/{id}/resultados", intentoH.ObtenerResultadoDetalle)
 				r.Post("/{id}/finalizar", intentoH.FinalizarIntento)
+				r.Delete("/{id}", intentoH.EliminarIntento)
 			})
 
 			// --- FAVORITOS ---

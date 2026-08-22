@@ -112,10 +112,17 @@ export interface Examen {
   es_demo?: boolean;
   total_preguntas?: number;
 }
-export interface ExamenCompleto extends Omit<Examen, 'nivel' | 'tipo' | 'anio'> {
+
+// src/types/index.ts
+
+export interface ExamenCompleto extends Omit<Examen, 'nivel' | 'tipo' | 'anio' | 'codigo_cuadernillo'> {
   nivel?: string;
   tipo?: string;
   anio?: number | string;
+  codigo_cuadernillo?: string;
+  imagen_portada?: string | null;
+  area?: string;
+  descripcion?: string;
 }
 
 export interface ExamenDetalle extends Examen {

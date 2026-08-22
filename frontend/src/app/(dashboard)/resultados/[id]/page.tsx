@@ -1,4 +1,3 @@
-//frontend > src > app > (dashboard) > resultados > [id] > page.tsx :
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -339,11 +338,11 @@ export default function ResultadoDetallePage() {
   //   todos modos; el RadarDominio flexible se encarga de rellenar ejes.
   // ============================================================
 
-// 1. Detectar qué nivel de datos estamos usando para informar al usuario
+  // 1. Detectar qué nivel de datos estamos usando para informar al usuario
   const usaComponentesParaRadar = useMemo(() => {
     const tieneSuficientesSubpruebas = (stats?.subpruebas?.length || 0) >= 3;
     const tieneSuficientesComponentes = (stats?.componentes?.length || 0) >= 3;
-    
+
     return !tieneSuficientesSubpruebas && tieneSuficientesComponentes;
   }, [stats]);
 
@@ -375,7 +374,8 @@ export default function ResultadoDetallePage() {
       porcentaje: s.porcentaje,
     }));
   }, [stats]);
-    // ============================================================
+
+  // ============================================================
   // ESTADO DE CARGA
   // ============================================================
 
@@ -532,7 +532,7 @@ export default function ResultadoDetallePage() {
           {/* COLUMNA 1: RADAR INTELIGENTE */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h2 className="text-lg font-bold mb-2">Dominio de Capacidades</h2>
-            
+
             {/* Subtítulo dinámico que explica la data al docente */}
             {stats && (
               <p className="text-[10px] text-blue-600 mb-4 uppercase font-bold tracking-widest animate-in fade-in duration-500">
@@ -548,13 +548,17 @@ export default function ResultadoDetallePage() {
                 <p>Generando analítica avanzada...</p>
               </div>
             ) : radarData.length > 0 ? (
-              /* Este componente ahora recibe la data filtrada por la lógica del useMemo */
-              <div className="flex h-64 items-center justify-center">
+              /* Este componente ahora recibe la data filtrada por la lógica del useMemo.
+                 Usamos min-h en vez de h-64 fija: el SVG del radar es de 320px y con
+                 altura fija se recortaba contra el contenido de abajo. */
+              <div className="flex min-h-[320px] items-center justify-center">
                 <RadarDominio data={radarData} />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-2">
-                <p className="text-sm italic">No hay datos suficientes para el mapa de calor.</p>
+                <p className="text-sm italic">
+                  No hay datos suficientes para el mapa de calor.
+                </p>
               </div>
             )}
           </div>

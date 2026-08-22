@@ -1,3 +1,5 @@
+//frontend > src > components > marketing > Features.tsx
+
 "use client";
 import { 
   BarChart3, 

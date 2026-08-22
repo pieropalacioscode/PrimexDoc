@@ -121,3 +121,7 @@ SELECT
     finalizado_en 
 FROM intentos_examen  -- <--- Cambia "intentos" por "intentos_examen"
 WHERE id = $1;
+
+-- name: EliminarIntento :exec
+DELETE FROM intentos_examen
+WHERE id = $1 AND usuario_id = $2;

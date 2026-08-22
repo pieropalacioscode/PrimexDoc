@@ -1,3 +1,5 @@
+//frontend > src > components > marketing > WhatsappButton.tsx
+
 "use client";
 import { MessageCircle } from 'lucide-react';
 

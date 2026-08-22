@@ -1,3 +1,5 @@
+//frontend > src > components > marketing > Navbar.tsx
+
 "use client";
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';

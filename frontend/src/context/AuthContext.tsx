@@ -8,6 +8,7 @@ interface AuthContextType {
   user: Usuario | null;
   token: string | null;
   isLoading: boolean;
+  loading: boolean; // Alias para evitar errores de compilación TS2339
   login: (authData: AuthResponse) => void;
   loginWithToken: (token: string) => Promise<boolean>;
   logout: () => void;
@@ -107,7 +108,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, loginWithToken, logout }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        token, 
+        isLoading, 
+        loading: isLoading, // Expuesto también como 'loading'
+        login, 
+        loginWithToken, 
+        logout 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

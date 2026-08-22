@@ -17,6 +17,7 @@ type Querier interface {
 	// queries/usuarios.sql name: CrearUsuario :one
 	CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error)
 	EliminarExamenGuardado(ctx context.Context, arg EliminarExamenGuardadoParams) error
+	EliminarIntento(ctx context.Context, arg EliminarIntentoParams) error
 	EsExamenGuardado(ctx context.Context, arg EsExamenGuardadoParams) (bool, error)
 	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
 	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
