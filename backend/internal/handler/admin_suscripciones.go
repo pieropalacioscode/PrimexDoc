@@ -1,12 +1,16 @@
+//backend > internal > handler > admin_suscripciones.go
 package handler
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
+	"fmt"
+	"github.com/google/uuid"
 
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/go-chi/chi/v5"
 )
 
 type ActivarSuscripcionRequest struct {
@@ -78,4 +82,51 @@ func (h *AdminSuscripcionesHandler) Activar(w http.ResponseWriter, r *http.Reque
 		"estado":         sub.Estado,
 		"expira_en":      sub.FechaExpiracion.Time,
 	})
+}
+
+func (h *AdminSuscripcionesHandler) ListarUsuarios(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	
+	// Convertir string a pgtype.Text para SQLC
+	arg := pgtype.Text{String: query, Valid: true}
+
+	usuarios, err := h.DB.ListarUsuariosParaAdmin(r.Context(), arg)
+	if err != nil {
+		http.Error(w, "Error al listar usuarios", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(usuarios)
+}
+
+func (h *AdminSuscripcionesHandler) ExtenderSuscripcion(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	parsedID, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "ID inválido", 400)
+		return
+	}
+	userUUID := pgtype.UUID{Bytes: parsedID, Valid: true}
+
+	var req struct {
+		Meses int `json:"meses"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "JSON inválido", 400)
+		return
+	}
+
+	// SQLC espera pgtype.Text para el intervalo en postgres
+	mesesArg := pgtype.Text{String: fmt.Sprintf("%d", req.Meses), Valid: true}
+
+	err = h.DB.ExtenderSuscripcion(r.Context(), db.ExtenderSuscripcionParams{
+		ID:      userUUID,
+		Column2: mesesArg,
+	})
+
+	if err != nil {
+		http.Error(w, "Error al actualizar", 500)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

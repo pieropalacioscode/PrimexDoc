@@ -21,6 +21,7 @@ import {
   Loader2,
   X,
   Lightbulb,
+  Volume2,
 } from 'lucide-react';
 import { QuestionText, InlineText } from '../../../components/exam/QuestionText';
 
@@ -126,6 +127,101 @@ function adaptarExamen(data: any): ExamenDetalle {
     })),
   } as ExamenDetalle;
 }
+
+// ==========================================
+// AUDIO: helpers de texto-a-voz (fuera del componente, funciones puras)
+// ==========================================
+
+// Limpia el texto antes de mandarlo al sintetizador: quita markdown, tags HTML,
+// numeración de viñetas y espacios repetidos, para que la voz no lea símbolos
+// sueltos ("asterisco", "numeral", etc.) y suene más fluida.
+function limpiarTextoParaAudio(texto?: string | null): string {
+  if (!texto) return '';
+  return texto
+    .replace(/<[^>]*>/g, ' ') // tags HTML
+    .replace(/[*_#>`~]/g, ' ') // símbolos de markdown
+    .replace(/^\s*[-•]\s*/gm, '. ') // viñetas al inicio de línea -> pausa
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Elige la voz en español más "familiar y didáctica" disponible en el navegador.
+// Prioriza voces de motores neuronales (Google/Microsoft) conocidas por sonar
+// naturales, con preferencia por variantes latinoamericanas antes que caer a
+// cualquier voz en español disponible.
+function elegirMejorVoz(voces: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const esVoces = voces.filter((v) => v.lang?.toLowerCase().startsWith('es'));
+  if (esVoces.length === 0) return undefined;
+
+  const nombresPreferidos = [
+    'google español',
+    'microsoft sabina',
+    'microsoft helena',
+    'microsoft paulina',
+    'paulina',
+    'mónica',
+    'monica',
+    'lucía',
+    'lucia',
+    'esperanza',
+    'pablo',
+    'raul',
+    'raúl',
+    'jorge',
+  ];
+
+  for (const nombre of nombresPreferidos) {
+    const encontrada = esVoces.find((v) => v.name.toLowerCase().includes(nombre));
+    if (encontrada) return encontrada;
+  }
+
+  // Fallback: cualquier voz en español, priorizando variantes regionales cercanas
+  return (
+    esVoces.find((v) => v.lang === 'es-PE') ||
+    esVoces.find((v) => v.lang === 'es-419') ||
+    esVoces.find((v) => v.lang === 'es-MX') ||
+    esVoces.find((v) => v.lang === 'es-ES') ||
+    esVoces[0]
+  );
+}
+
+// ==========================================
+// UI: botón de audio reutilizable (play / pausa / reanudar)
+// ==========================================
+function BotonAudio({
+  activo,
+  pausado,
+  onClick,
+  disabled,
+  className = '',
+  size = 20,
+  titulo = 'Escuchar',
+}: {
+  activo: boolean;
+  pausado: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  className?: string;
+  size?: number;
+  titulo?: string;
+}) {
+  const Icono = activo ? (pausado ? Play : Pause) : Volume2;
+  const etiqueta = activo ? (pausado ? 'Reanudar audio' : 'Pausar audio') : titulo;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={etiqueta}
+      aria-label={etiqueta}
+      className={className}
+    >
+      <Icono size={size} fill={activo ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
 // ==========================================
 // COMPONENTE PRINCIPAL
 // ==========================================
@@ -177,6 +273,113 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
     submittingRef.current = submitting;
     tiempoRestanteRef.current = tiempoRestante;
   });
+
+  // ==========================================
+  // AUDIO INTELIGENTE: voz, reproducción, pausa/reanudación y limpieza
+  // ==========================================
+
+  // 'pregunta' | 'texto_base' | 'explicacion' | null — identifica qué botón está
+  // sonando ahora mismo, para que cada botón muestre su propio icono de estado
+  // (Escuchar / Pausar / Reanudar) sin interferir con los demás.
+  const [audioActivoId, setAudioActivoId] = useState<string | null>(null);
+  const [audioPausado, setAudioPausado] = useState(false);
+  const [vocesDisponibles, setVocesDisponibles] = useState<SpeechSynthesisVoice[]>([]);
+  const soportaAudio = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  // La lista de voces del navegador a veces llega vacía en el primer render
+  // (sobre todo en Chrome) y se completa de forma asíncrona vía 'onvoiceschanged'.
+  useEffect(() => {
+    if (!soportaAudio) return;
+    const cargarVoces = () => setVocesDisponibles(window.speechSynthesis.getVoices());
+    cargarVoces();
+    window.speechSynthesis.onvoiceschanged = cargarVoces;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Detiene el audio por completo y limpia el estado visual de los botones
+  const detenerAudio = () => {
+    if (soportaAudio) window.speechSynthesis.cancel();
+    setAudioActivoId(null);
+    setAudioPausado(false);
+  };
+
+  // Reproduce (o pausa/reanuda si ya está sonando ese mismo contenido) un texto.
+  // `id` identifica el origen (pregunta / texto_base / explicacion) para poder
+  // sincronizar el icono del botón correcto.
+  const hablarTexto = (texto: string, id: string) => {
+    if (!soportaAudio) {
+      alert('Tu navegador no soporta la lectura en voz alta.');
+      return;
+    }
+
+    // Si el usuario vuelve a tocar el MISMO botón que ya está sonando,
+    // alternamos entre pausar y reanudar en vez de reiniciar el audio.
+    if (audioActivoId === id) {
+      if (audioPausado) {
+        window.speechSynthesis.resume();
+        setAudioPausado(false);
+      } else {
+        window.speechSynthesis.pause();
+        setAudioPausado(true);
+      }
+      return;
+    }
+
+    const textoLimpio = limpiarTextoParaAudio(texto);
+    if (!textoLimpio) return;
+
+    // Nota: la reproducción siempre se dispara desde un onClick (interacción del
+    // usuario), por lo que los navegadores no bloquean el audio automático aquí.
+    window.speechSynthesis.cancel(); // corta cualquier audio anterior
+
+    const utterance = new SpeechSynthesisUtterance(textoLimpio);
+    const mejorVoz = elegirMejorVoz(vocesDisponibles);
+    if (mejorVoz) {
+      utterance.voice = mejorVoz;
+      utterance.lang = mejorVoz.lang;
+    } else {
+      utterance.lang = 'es-PE';
+    }
+    utterance.rate = 0.95; // velocidad natural, ligeramente pausada
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => {
+      setAudioActivoId(null);
+      setAudioPausado(false);
+    };
+    utterance.onerror = () => {
+      setAudioActivoId(null);
+      setAudioPausado(false);
+    };
+
+    setAudioActivoId(id);
+    setAudioPausado(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Corta el audio automáticamente al cambiar de pregunta o de modo, para que
+  // nunca quede sonando algo que ya no corresponde a lo que se ve en pantalla.
+  useEffect(() => {
+    return () => detenerAudio();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preguntaActualIdx, modo]);
+
+  // Lee la pregunta actual junto con sus alternativas
+  const hablarPreguntaActual = () => {
+    if (!preguntaActual) return;
+    const opciones = (preguntaActual.opciones || (preguntaActual as any).alternativas || []) as Opcion[];
+    const opcionesTexto = opciones
+      .map((o) => `Alternativa ${o.etiqueta || o.letra}. ${o.texto_opcion || (o as any).texto}`)
+      .join('. ');
+
+    hablarTexto(
+      `Pregunta ${preguntaActualIdx + 1}. ${preguntaActual.texto_pregunta || (preguntaActual as any).enunciado}. ${opcionesTexto}`,
+      'pregunta'
+    );
+  };
 
   // ==========================================
   // 1. INICIALIZACIÓN (Carga Examen + Crear Intento) — SEGÚN EL MODO
@@ -256,6 +459,8 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
     const curTiempoRestante = tiempoRestanteRef.current;
 
     if (!curExamen || !curIntentoId || curSubmitting) return;
+
+    detenerAudio(); // el examen se está entregando: no debe seguir sonando nada
 
     setSubmitting(true);
     if (porTimeout) {
@@ -377,6 +582,16 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
   const irAPregunta = (index: number) => {
     setPreguntaActualIdx(index);
     setMostrarMapaMovil(false);
+  };
+
+  const pausarSimulacro = () => {
+    detenerAudio(); // evita que la voz siga sonando mientras el examen está "congelado"
+    setEsPausado(true);
+  };
+
+  const salirDelSimulacro = () => {
+    detenerAudio();
+    router.push('/examenes');
   };
 
   // ==========================================
@@ -505,7 +720,7 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-y-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
-              onClick={() => router.push('/examenes')}
+              onClick={salirDelSimulacro}
               disabled={submitting}
               className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 p-2 sm:px-3 sm:py-2 rounded-xl transition-colors text-sm font-semibold disabled:opacity-50 shrink-0"
             >
@@ -548,7 +763,7 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
             <div className="flex items-center gap-2">
               {modo === 'simulacro' && (
                 <button
-                  onClick={() => setEsPausado(true)}
+                  onClick={pausarSimulacro}
                   disabled={submitting}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-white border-2 border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50"
                   title="Pausar simulacro"
@@ -557,6 +772,29 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
                   <span className="hidden lg:inline">Pausar</span>
                 </button>
               )}
+
+              {/* AUDIO: escuchar / pausar / reanudar la pregunta actual */}
+              <div className="flex items-center gap-1">
+                <BotonAudio
+                  activo={audioActivoId === 'pregunta'}
+                  pausado={audioPausado}
+                  onClick={hablarPreguntaActual}
+                  disabled={submitting || !soportaAudio}
+                  className="p-2 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 transition-all disabled:opacity-50"
+                  titulo="Escuchar pregunta"
+                  size={20}
+                />
+                {audioActivoId && (
+                  <button
+                    onClick={detenerAudio}
+                    className="p-2 rounded-full bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600 transition-all"
+                    title="Detener audio"
+                    type="button"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
 
               <button
                 onClick={() => toggleMarcarPregunta(preguntaActual.id)}
@@ -610,22 +848,44 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
             {/* BLOQUE DE TEXTO BASE (LECTURA Y CASOS) */}
             {textoBaseActual && (
               <div className="mb-8 rounded-2xl border-2 border-blue-100 bg-blue-50/50 overflow-hidden">
-                <button
-                  onClick={() => setMostrarTextoBase((prev) => !prev)}
-                  className="w-full p-3 sm:p-4 bg-white border-b border-blue-100 flex items-center justify-between gap-2 text-left"
-                >
-                  <span className="flex items-center gap-2 text-blue-900 font-extrabold text-sm truncate pr-2">
-                    <BookOpen className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{textoBaseActual.titulo || 'Caso Pedagógico / Lectura'}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all shrink-0">
-                    {mostrarTextoBase ? (
-                      <>Ocultar <ChevronUp className="w-4 h-4" /></>
-                    ) : (
-                      <>Leer caso <ChevronDown className="w-4 h-4" /></>
-                    )}
-                  </span>
-                </button>
+                <div className="w-full p-3 sm:p-4 bg-white border-b border-blue-100 flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => setMostrarTextoBase((prev) => !prev)}
+                    className="flex items-center gap-2 text-left min-w-0 flex-1"
+                  >
+                    <span className="flex items-center gap-2 text-blue-900 font-extrabold text-sm truncate pr-2">
+                      <BookOpen className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{textoBaseActual.titulo || 'Caso Pedagógico / Lectura'}</span>
+                    </span>
+                  </button>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* AUDIO: escuchar / pausar / reanudar el caso pedagógico */}
+                    <BotonAudio
+                      activo={audioActivoId === 'texto_base'}
+                      pausado={audioPausado}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        hablarTexto(`Caso de estudio. ${textoBaseActual.contenido}`, 'texto_base');
+                      }}
+                      disabled={!soportaAudio}
+                      className="p-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+                      titulo="Escuchar caso"
+                      size={16}
+                    />
+
+                    <button
+                      onClick={() => setMostrarTextoBase((prev) => !prev)}
+                      className="flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all"
+                    >
+                      {mostrarTextoBase ? (
+                        <>Ocultar <ChevronUp className="w-4 h-4" /></>
+                      ) : (
+                        <>Leer caso <ChevronDown className="w-4 h-4" /></>
+                      )}
+                    </button>
+                  </div>
+                </div>
                 {mostrarTextoBase && (
                   <div className="p-5 sm:p-6 text-slate-800 text-sm sm:text-base max-h-[40vh] overflow-y-auto">
                     <QuestionText text={textoBaseActual.contenido} className="leading-relaxed" />
@@ -645,10 +905,23 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
               </div>
             )}
 
-            {/* Enunciado: div+role="heading" en vez de <h2>, porque un <h2> no
-                admite <ul> y el enunciado puede traer premisas en viñetas */}
-            <div role="heading" aria-level={2} className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 mb-8">
-              <QuestionText text={preguntaActual.texto_pregunta || (preguntaActual as any).enunciado} className="leading-snug" />
+            {/* Enunciado + botón de audio inteligente (pregunta + alternativas) */}
+            <div className="flex items-start justify-between gap-4 mb-8">
+              {/* div+role="heading" en vez de <h2>, porque un <h2> no admite <ul>
+                  y el enunciado puede traer premisas en viñetas */}
+              <div role="heading" aria-level={2} className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 flex-1">
+                <QuestionText text={preguntaActual.texto_pregunta || (preguntaActual as any).enunciado} className="leading-snug" />
+              </div>
+
+              <BotonAudio
+                activo={audioActivoId === 'pregunta'}
+                pausado={audioPausado}
+                onClick={hablarPreguntaActual}
+                disabled={submitting || !soportaAudio}
+                className="shrink-0 p-3 rounded-2xl bg-slate-900 text-white hover:bg-blue-600 shadow-lg transition-all disabled:opacity-50"
+                titulo="Escuchar pregunta y opciones"
+                size={20}
+              />
             </div>
 
             {/* Alternativas */}
@@ -704,9 +977,26 @@ export default function SimulacroPage({ params }: SimulacroPageProps) {
             {/* SUSTENTO PEDAGÓGICO INSTANTÁNEO (solo modo entrenamiento, tras responder) */}
             {mostrarResultadoActual && (
               <div className="mt-8 p-6 bg-amber-50 border border-amber-100 rounded-3xl animate-in fade-in slide-in-from-top-4">
-                <div className="flex items-center gap-2 mb-3 text-amber-700 font-bold">
-                  <Lightbulb className="w-5 h-5" />
-                  <h4>Sustento Pedagógico:</h4>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2 text-amber-700 font-bold">
+                    <Lightbulb className="w-5 h-5" />
+                    <h4>Sustento Pedagógico:</h4>
+                  </div>
+                  {/* AUDIO: escuchar / pausar / reanudar la explicación */}
+                  <BotonAudio
+                    activo={audioActivoId === 'explicacion'}
+                    pausado={audioPausado}
+                    onClick={() =>
+                      hablarTexto(
+                        `Sustento pedagógico. ${(preguntaActual as any).explicacion || 'No hay explicación disponible para esta pregunta.'}`,
+                        'explicacion'
+                      )
+                    }
+                    disabled={!soportaAudio}
+                    className="p-2 rounded-xl bg-amber-100 text-amber-700 hover:bg-amber-600 hover:text-white transition-all shrink-0"
+                    titulo="Escuchar explicación"
+                    size={16}
+                  />
                 </div>
                 <p className="text-slate-700 italic leading-relaxed">
                   {(preguntaActual as any).explicacion || 'No hay explicación disponible para esta pregunta.'}

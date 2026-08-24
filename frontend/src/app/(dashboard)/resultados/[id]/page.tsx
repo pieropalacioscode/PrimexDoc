@@ -1,3 +1,4 @@
+//frontend > src > app > (dashboard) > resultados > [id] > page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -19,6 +20,7 @@ import {
   Target,
   Award,
   Filter,
+  Volume2,
 } from "lucide-react";
 
 // ============================================================
@@ -83,9 +85,23 @@ export interface AnaliticaFullResponse {
 }
 
 // ============================================================
+// UTILIDAD: Lectura en voz alta (Web Speech API)
+// ============================================================
+function leerEnunciado(texto: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+  // Detener cualquier lectura previa
+  window.speechSynthesis.cancel();
+
+  const msg = new SpeechSynthesisUtterance(texto);
+  msg.lang = "es-PE";
+  msg.rate = 0.9; // Un poco más lento para mejor comprensión docente
+  window.speechSynthesis.speak(msg);
+}
+
+// ============================================================
 // COMPONENTE: RADAR DE DOMINIO (SVG puro, sin librerías externas)
 // ============================================================
-
 function RadarDominio({ data }: { data: AnaliticaData[] }) {
   // Si no hay datos, no mostramos nada
   if (!data || data.length === 0) return null;
@@ -241,6 +257,10 @@ export default function ResultadoDetallePage() {
   const [textosExpandidos, setTextosExpandidos] = useState<{
     [key: string]: boolean;
   }>({});
+
+  // Modo Lectura: oculta los textos base para que el docente/estudiante
+  // se enfoque solo en la pregunta, y habilita la lectura en voz alta.
+  const [modoLectura, setModoLectura] = useState(false);
 
   // ============================================================
   // CARGAR DATOS DE LA API
@@ -600,7 +620,7 @@ export default function ResultadoDetallePage() {
         </div>
 
         {/* ====================================================
-            BARRA DE FILTROS DE PREGUNTAS (ESTADO)
+            BARRA DE FILTROS DE PREGUNTAS (ESTADO + MODO LECTURA)
         ==================================================== */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -608,7 +628,7 @@ export default function ResultadoDetallePage() {
             <span>Filtrar por:</span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(["todas", "correctas", "incorrectas", "omitidas"] as const).map(
               (f) => (
                 <button
@@ -625,6 +645,27 @@ export default function ResultadoDetallePage() {
               )
             )}
           </div>
+        </div>
+
+        {/* ====================================================
+            TOGGLE MODO LECTURA
+            Oculta los textos base para que el docente/estudiante
+            se enfoque solo en las preguntas.
+        ==================================================== */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => setModoLectura(!modoLectura)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all ${
+              modoLectura
+                ? "bg-blue-600 text-white shadow-lg"
+                : "bg-white text-slate-500 border border-slate-200"
+            }`}
+          >
+            <BookOpen size={16} />
+            {modoLectura
+              ? "DESACTIVAR MODO LECTURA"
+              : "MODO LECTURA (SÓLO PREGUNTAS)"}
+          </button>
         </div>
 
         {/* ====================================================
@@ -724,8 +765,9 @@ export default function ResultadoDetallePage() {
 
                   {/* CUERPO DE LA PREGUNTA */}
                   <div className="p-6 sm:p-8">
-                    {/* TEXTO DE APOYO / LECTURA BASE (ACORDEÓN) */}
-                    {item.texto_base_contenido && (
+                    {/* TEXTO DE APOYO / LECTURA BASE (ACORDEÓN)
+                        Solo se muestra si NO está activo el Modo Lectura */}
+                    {!modoLectura && item.texto_base_contenido && (
                       <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                         <button
                           type="button"
@@ -748,10 +790,19 @@ export default function ResultadoDetallePage() {
                       </div>
                     )}
 
-                    {/* ENUNCIADO DE LA PREGUNTA */}
-                    <p className="mb-6 text-lg font-bold leading-relaxed text-slate-800">
-                      {item.enunciado}
-                    </p>
+                    {/* ENUNCIADO DE LA PREGUNTA + BOTÓN DE LECTURA EN VOZ ALTA */}
+                    <div className="mb-6 flex items-start justify-between gap-3">
+                      <p className="text-lg font-bold leading-relaxed text-slate-800">
+                        {item.enunciado}
+                      </p>
+                      <button
+                        onClick={() => leerEnunciado(item.enunciado)}
+                        className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-500 transition-colors hover:bg-blue-100 hover:text-blue-600"
+                        title="Escuchar pregunta"
+                      >
+                        <Volume2 size={20} />
+                      </button>
+                    </div>
 
                     {/* ALTERNATIVAS */}
                     <div className="mb-8 grid gap-3">

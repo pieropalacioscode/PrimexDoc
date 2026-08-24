@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
-
+	"github.com/google/uuid"
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
 )
@@ -298,3 +298,43 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		"mensaje": "Contraseña actualizada exitosamente",
 	})
 }
+
+// En backend/internal/handler/auth.go
+func (h *AuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	userIDStr, ok := auth.GetUserID(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	parsedID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "ID de usuario inválido")
+		return
+	}
+	userUUID := pgtype.UUID{Bytes: parsedID, Valid: true}
+
+	usuario, err := h.DB.GetUsuarioByID(r.Context(), userUUID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Usuario no encontrado")
+		return
+	}
+
+	diasRestantes := 0
+	if usuario.SuscripcionHasta.Valid {
+		diasRestantes = int(time.Until(usuario.SuscripcionHasta.Time).Hours() / 24)
+		if diasRestantes < 0 {
+			diasRestantes = 0
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"id":                userIDStr,
+		"nombre_completo":   usuario.NombreCompleto,
+		"correo":            usuario.Correo,
+		"rol":               usuario.Rol.String,
+		"suscripcion_hasta": usuario.SuscripcionHasta.Time,
+		"dias_restantes":    diasRestantes,
+	})
+}
+

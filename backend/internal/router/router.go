@@ -64,6 +64,7 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 			r.Use(authMiddleware)
 
 			// Perfil y Catálogo Base
+			r.Get("/me", authH.GetProfile)
 			r.Get("/me/suscripcion", userSubH.GetMiSuscripcion)
 			r.Get("/examenes", examenH.ListarExamenes)
 
@@ -99,6 +100,8 @@ func NewRouter(queries *db.Queries, authMiddleware func(http.Handler) http.Handl
 			// --- PANEL ADMINISTRADOR ---
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
+				r.Get("/admin/users", adminSubH.ListarUsuarios)           // <--- AÑADIR ESTA LÍNEA
+				r.Post("/admin/users/{id}/renew", adminSubH.ExtenderSuscripcion) // <--- AÑADIR ESTA LÍNEA
 				r.Post("/admin/suscripciones/activar", adminSubH.Activar)
 			})
 		})

@@ -65,6 +65,28 @@ func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (Cre
 	return i, err
 }
 
+const extenderSuscripcion = `-- name: ExtenderSuscripcion :exec
+UPDATE usuarios
+SET suscripcion_hasta = CASE 
+    WHEN suscripcion_hasta > NOW() THEN suscripcion_hasta + ($2 || ' month')::interval
+    ELSE NOW() + ($2 || ' month')::interval
+END,
+actualizado_en = NOW()
+WHERE id = $1
+`
+
+type ExtenderSuscripcionParams struct {
+	ID      pgtype.UUID `json:"id"`
+	Column2 pgtype.Text `json:"column_2"`
+}
+
+// Si la suscripción está vigente, suma meses al vencimiento actual.
+// Si ya venció, suma meses a partir de hoy.
+func (q *Queries) ExtenderSuscripcion(ctx context.Context, arg ExtenderSuscripcionParams) error {
+	_, err := q.db.Exec(ctx, extenderSuscripcion, arg.ID, arg.Column2)
+	return err
+}
+
 const getOrCreateUserByEmail = `-- name: GetOrCreateUserByEmail :one
 INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol)
 VALUES ($1, 'OAUTH_GOOGLE_PLACEHOLDER', $2, 'usuario')
@@ -146,6 +168,49 @@ func (q *Queries) GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodi
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listarUsuariosParaAdmin = `-- name: ListarUsuariosParaAdmin :many
+SELECT id, correo, nombre_completo, rol, suscripcion_hasta, creado_en
+FROM usuarios
+WHERE correo ILIKE '%' || $1 || '%'
+ORDER BY creado_en DESC
+`
+
+type ListarUsuariosParaAdminRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	Rol              pgtype.Text        `json:"rol"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+}
+
+func (q *Queries) ListarUsuariosParaAdmin(ctx context.Context, dollar_1 pgtype.Text) ([]ListarUsuariosParaAdminRow, error) {
+	rows, err := q.db.Query(ctx, listarUsuariosParaAdmin, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListarUsuariosParaAdminRow{}
+	for rows.Next() {
+		var i ListarUsuariosParaAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Correo,
+			&i.NombreCompleto,
+			&i.Rol,
+			&i.SuscripcionHasta,
+			&i.CreadoEn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const marcarCodigoComoUsado = `-- name: MarcarCodigoComoUsado :exec

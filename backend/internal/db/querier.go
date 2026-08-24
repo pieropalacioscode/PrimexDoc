@@ -19,6 +19,9 @@ type Querier interface {
 	EliminarExamenGuardado(ctx context.Context, arg EliminarExamenGuardadoParams) error
 	EliminarIntento(ctx context.Context, arg EliminarIntentoParams) error
 	EsExamenGuardado(ctx context.Context, arg EsExamenGuardadoParams) (bool, error)
+	// Si la suscripción está vigente, suma meses al vencimiento actual.
+	// Si ya venció, suma meses a partir de hoy.
+	ExtenderSuscripcion(ctx context.Context, arg ExtenderSuscripcionParams) error
 	FinalizarIntento(ctx context.Context, arg FinalizarIntentoParams) error
 	GetClavesYExplicacionesByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetClavesYExplicacionesByExamenIDRow, error)
 	GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenByIDRow, error)
@@ -39,6 +42,7 @@ type Querier interface {
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
 	ListarExamenesGuardados(ctx context.Context, usuarioID pgtype.UUID) ([]ListarExamenesGuardadosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
+	ListarUsuariosParaAdmin(ctx context.Context, dollar_1 pgtype.Text) ([]ListarUsuariosParaAdminRow, error)
 	MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) error
 	ObtenerAnaliticaDetalladaPorComponente(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerAnaliticaDetalladaPorComponenteRow, error)
 	// Devuelve el rendimiento desglosado por subprueba (Comprensión, Razonamiento, etc.)

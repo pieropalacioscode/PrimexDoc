@@ -38,3 +38,20 @@ UPDATE usuarios SET contrasena_hash = $2, actualizado_en = NOW() WHERE correo = 
 SELECT id, correo, nombre_completo, rol, suscripcion_hasta
 FROM usuarios
 WHERE id = $1;
+
+-- name: ListarUsuariosParaAdmin :many
+SELECT id, correo, nombre_completo, rol, suscripcion_hasta, creado_en
+FROM usuarios
+WHERE correo ILIKE '%' || $1 || '%'
+ORDER BY creado_en DESC;
+
+-- name: ExtenderSuscripcion :exec
+-- Si la suscripción está vigente, suma meses al vencimiento actual. 
+-- Si ya venció, suma meses a partir de hoy.
+UPDATE usuarios
+SET suscripcion_hasta = CASE 
+    WHEN suscripcion_hasta > NOW() THEN suscripcion_hasta + ($2 || ' month')::interval
+    ELSE NOW() + ($2 || ' month')::interval
+END,
+actualizado_en = NOW()
+WHERE id = $1;
