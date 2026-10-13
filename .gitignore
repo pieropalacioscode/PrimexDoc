@@ -3,7 +3,8 @@
 .env.local
 .env.*
 
-
+#dockercompose-yml
+/docker-compose.yml
 # Frontend (Node.js / Next.js)
 frontend/node_modules/
 frontend/.next/
