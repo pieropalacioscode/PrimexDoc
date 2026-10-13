@@ -3,16 +3,21 @@ module github.com/alienwarecode/docent-primex-api
 go 1.25.0
 
 require (
+	github.com/cloudinary/cloudinary-go/v2 v2.16.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/cors v1.2.2
+	github.com/go-chi/httprate v0.16.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
+	github.com/resend/resend-go/v2 v2.28.0
 	golang.org/x/crypto v0.54.0
+	golang.org/x/time v0.15.0
 )
 
 require (
-	github.com/go-chi/httprate v0.16.0 // indirect
+	github.com/creasty/defaults v1.7.0 // indirect
+	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/sys v0.47.0 // indirect

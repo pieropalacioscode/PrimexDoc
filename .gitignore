@@ -3,6 +3,7 @@
 .env.local
 .env.*
 
+
 # Frontend (Node.js / Next.js)
 frontend/node_modules/
 frontend/.next/
@@ -24,3 +25,23 @@ backend/api
 .DS_Store
 Thumbs.db
 *:Zone.Identifier
+
+# Seguridad: respaldos y datos de producción
+*.sql.bak
+*.sql.gz
+*.dump
+*.backup
+backup_*.sql
+backend/backup_*.sql
+
+# Copias temporales de código
+*.go.bak-*
+*.tsx.bak-*
+*.sql.bak-*
+
+# Ejecutables locales del backend
+/backend/api-primex
+/backend/api-docent-prod
+
+# Paquetes locales de despliegue
+/frontend/frontend-*.tar.gz

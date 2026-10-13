@@ -13,9 +13,9 @@ RETURNING id, examen_id, modo, total_preguntas, estado, iniciado_en;
 
 -- name: ObtenerIntentoPorID :one
 -- name: ObtenerIntentoPorID :one
-SELECT 
-    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje, 
-    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+SELECT
+    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje,
+    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas,
     i.tiempo_empleado_segundos, -- 👈 AQUÍ ESTÁ LA MAGIA DEL TIEMPO
     i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
@@ -24,7 +24,7 @@ WHERE i.id = $1 AND i.usuario_id = $2;
 
 
 -- name: GetClavesYExplicacionesByExamenID :many
-SELECT 
+SELECT
     p.id AS pregunta_id,
     p.numero_pregunta,
     COALESCE(o.id, '00000000-0000-0000-0000-000000000000'::uuid) AS opcion_correcta_id,
@@ -42,14 +42,14 @@ INSERT INTO respuestas_intento (
 ) VALUES (
     $1, $2, $3, $4
 )
-ON CONFLICT (intento_id, pregunta_id) 
-DO UPDATE SET 
+ON CONFLICT (intento_id, pregunta_id)
+DO UPDATE SET
     opcion_seleccionada_id = EXCLUDED.opcion_seleccionada_id,
     es_correcta = EXCLUDED.es_correcta;
 
 -- name: FinalizarIntento :exec
 UPDATE intentos_examen
-SET 
+SET
     puntaje = $2,
     preguntas_correctas = $3,
     preguntas_incorrectas = $4,
@@ -59,9 +59,9 @@ SET
 WHERE id = $1 AND usuario_id = $6;
 
 -- name: ListarIntentosPorUsuario :many
-SELECT 
-    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo, 
-    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+SELECT
+    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo,
+    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas,
     i.tiempo_empleado_segundos, -- 👈 PARA MOSTRAR TIEMPOS EN EL HISTORIAL
     i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
@@ -70,7 +70,7 @@ WHERE i.usuario_id = $1
 ORDER BY i.iniciado_en DESC;
 
 -- name: GetRespuestasPorIntentoID :many
-SELECT 
+SELECT
     pregunta_id,
     opcion_seleccionada_id,
     es_correcta
@@ -78,16 +78,17 @@ FROM respuestas_intento
 WHERE intento_id = $1;
 
 -- name: ObtenerDetalleResultado :many
-SELECT 
-    p.id AS pregunta_id, 
-    p.numero_pregunta, 
-    p.texto_pregunta AS enunciado, 
-    tb.id AS texto_base_id, 
+SELECT
+    p.id AS pregunta_id,
+    p.numero_pregunta,
+    p.texto_pregunta AS enunciado,
+    COALESCE(NULLIF(p.componente, ''), 'General')::TEXT AS componente,
+    tb.id AS texto_base_id,
     tb.titulo AS texto_base_titulo,
     tb.contenido AS texto_base_contenido,
-    p.explicacion, 
-    ri.opcion_seleccionada_id, 
-    o_correcta.id AS opcion_correcta_id, 
+    p.explicacion,
+    ri.opcion_seleccionada_id,
+    o_correcta.id AS opcion_correcta_id,
     ri.es_correcta,
     (
         SELECT jsonb_agg(jsonb_build_object(
@@ -107,18 +108,18 @@ ORDER BY p.numero_pregunta ASC;
 
 -- name: ObtenerIntentoPorIDSimple :one
 -- Busca un intento sin filtrar por usuario para diagnóstico de seguridad
-SELECT 
-    id, 
-    usuario_id, 
-    examen_id, 
-    modo, 
-    puntaje, 
-    total_preguntas, 
-    preguntas_correctas, 
-    preguntas_incorrectas, 
-    estado, 
-    iniciado_en, 
-    finalizado_en 
+SELECT
+    id,
+    usuario_id,
+    examen_id,
+    modo,
+    puntaje,
+    total_preguntas,
+    preguntas_correctas,
+    preguntas_incorrectas,
+    estado,
+    iniciado_en,
+    finalizado_en
 FROM intentos_examen  -- <--- Cambia "intentos" por "intentos_examen"
 WHERE id = $1;
 

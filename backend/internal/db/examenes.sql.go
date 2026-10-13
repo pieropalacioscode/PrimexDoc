@@ -48,9 +48,9 @@ func (q *Queries) GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenB
 }
 
 const getExamenDetalleEntrenamiento = `-- name: GetExamenDetalleEntrenamiento :many
-SELECT 
+SELECT
     e.id AS examen_id, e.titulo, e.duracion_minutos,
-    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen, 
+    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen,
     p.explicacion, p.subprueba, p.componente, p.texto_base_id,
     o.id AS opcion_id, o.etiqueta, o.texto_opcion, o.es_correcta,
     t.id AS texto_id, t.codigo_texto_base, -- <--- AGREGAR ESTA LÍNEA
@@ -161,7 +161,8 @@ func (q *Queries) GetOpcionesByPreguntaIDs(ctx context.Context, dollar_1 []pgtyp
 }
 
 const getPreguntasByExamenID = `-- name: GetPreguntasByExamenID :many
-SELECT id, examen_id, texto_base_id, numero_pregunta, texto_pregunta, url_imagen, explicacion
+
+SELECT id, examen_id, texto_base_id, numero_pregunta, texto_pregunta, url_imagen, explicacion, subprueba, componente
 FROM preguntas
 WHERE examen_id = $1
 ORDER BY numero_pregunta ASC
@@ -175,6 +176,8 @@ type GetPreguntasByExamenIDRow struct {
 	TextoPregunta  string      `json:"texto_pregunta"`
 	UrlImagen      pgtype.Text `json:"url_imagen"`
 	Explicacion    pgtype.Text `json:"explicacion"`
+	Subprueba      pgtype.Text `json:"subprueba"`
+	Componente     pgtype.Text `json:"componente"`
 }
 
 func (q *Queries) GetPreguntasByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetPreguntasByExamenIDRow, error) {
@@ -194,6 +197,8 @@ func (q *Queries) GetPreguntasByExamenID(ctx context.Context, examenID pgtype.UU
 			&i.TextoPregunta,
 			&i.UrlImagen,
 			&i.Explicacion,
+			&i.Subprueba,
+			&i.Componente,
 		); err != nil {
 			return nil, err
 		}

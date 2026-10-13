@@ -100,30 +100,125 @@ const safeText = (
 };
 
 /**
- * Detecta el tipo de proceso a partir del título
- * y descripción del examen.
+ * ─────────────────────────────────────────────
+ * DETECCIÓN DE VARIANTE — VERSIÓN ROBUSTA
+ * ─────────────────────────────────────────────
+ *
+ * Se resuelve en 3 capas, de la más a la menos confiable:
+ *
+ *  1) Campo `tipo` explícito de la base de datos.
+ *  2) Token de proceso dentro del código de cuadernillo
+ *     (ej: "A05-EBRP-12-AS-PRIM-2023" → token "AS" = Ascenso).
+ *  3) Palabras clave en título/descripción (último recurso).
+ *
+ * La razón del bug original: el paso 3 se usaba SOLO, buscando
+ * substrings libres ("nombramiento"/"ascenso") en el texto completo.
+ * Muchos textos oficiales citan ambos términos juntos
+ * (ej. "Reglamento de Nombramiento y Ascenso"), lo que producía
+ * falsos positivos de "nombramiento" aunque el código y el campo
+ * `tipo` de la BD dijeran claramente "ascenso".
  */
-const detectVariant = (
-  texto: string
-): ExamVariant => {
-  const t = texto.toLowerCase();
 
-  if (t.includes('nombramiento')) {
-    return 'nombramiento';
+/**
+ * Intenta extraer el proceso desde el código de cuadernillo,
+ * partiendo por guiones y buscando tokens conocidos.
+ * Es la señal más confiable después del campo `tipo` de la BD,
+ * porque sigue un formato estructurado y no depende de redacción libre.
+ */
+const detectVariantFromCodigo = (
+  codigo: string
+): ExamVariant | null => {
+  if (!codigo) {
+    return null;
   }
 
-  if (t.includes('ascenso')) {
+  const tokens = codigo.toUpperCase().split('-');
+
+  if (tokens.includes('AS') || tokens.includes('ASC')) {
     return 'ascenso';
   }
 
   if (
-    t.includes('cpm') ||
-    t.includes('ingreso')
+    tokens.includes('NM') ||
+    tokens.includes('NOM') ||
+    tokens.includes('NOMB')
   ) {
+    return 'nombramiento';
+  }
+
+  if (tokens.includes('CPM')) {
+    return 'cpm';
+  }
+
+  if (tokens.includes('ESP')) {
+    return 'especialidad';
+  }
+
+  return null;
+};
+
+/**
+ * Fallback final: busca palabras clave en título/descripción,
+ * usando límites de palabra (\b) para evitar falsos positivos
+ * por substrings sueltos.
+ */
+const detectVariantFromTexto = (
+  texto: string
+): ExamVariant => {
+  const t = texto.toLowerCase();
+
+  const tieneAscenso = /\bascenso\b/.test(t);
+  const tieneNombramiento = /\bnombramiento\b/.test(t);
+
+  if (tieneAscenso && !tieneNombramiento) {
+    return 'ascenso';
+  }
+
+  if (tieneNombramiento && !tieneAscenso) {
+    return 'nombramiento';
+  }
+
+  if (tieneAscenso && tieneNombramiento) {
+    // Texto ambiguo (menciona ambos, típico de reglamentos).
+    // Si llegamos hasta aquí es porque ni el campo `tipo` de la BD
+    // ni el código de cuadernillo pudieron resolverlo antes.
+    // Ascenso como último criterio de desempate, pero lo ideal
+    // es no depender de esta rama.
+    return 'ascenso';
+  }
+
+  if (t.includes('cpm') || t.includes('ingreso')) {
     return 'cpm';
   }
 
   return 'especialidad';
+};
+
+/**
+ * Punto de entrada de la detección de variante.
+ * Aplica las 3 capas en orden de confiabilidad.
+ */
+const detectVariant = (
+  texto: string,
+  codigo: string,
+  tipoDb?: unknown
+): ExamVariant => {
+  // 1) Campo `tipo` de la base de datos, si viene informado.
+  const tipoNormalizado = safeText(tipoDb, '').toLowerCase();
+
+  if (tipoNormalizado === 'ascenso') return 'ascenso';
+  if (tipoNormalizado === 'nombramiento') return 'nombramiento';
+  if (tipoNormalizado === 'cpm') return 'cpm';
+  if (tipoNormalizado === 'especialidad') return 'especialidad';
+
+  // 2) Token dentro del código de cuadernillo.
+  const desdeCodigo = detectVariantFromCodigo(codigo);
+  if (desdeCodigo) {
+    return desdeCodigo;
+  }
+
+  // 3) Palabras clave en el texto libre (último recurso).
+  return detectVariantFromTexto(texto);
 };
 
 /**
@@ -231,8 +326,11 @@ export const perfectExamenData = (
   // TIPO DE PROCESO
   // ─────────────────────────────────────────────
 
-  const variant =
-    detectVariant(textoCompleto);
+  const variant = detectVariant(
+    textoCompleto,
+    codigo,
+    (ex as any).tipo
+  );
 
   const config =
     VARIANT_CONFIG[variant];

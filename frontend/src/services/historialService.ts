@@ -26,9 +26,13 @@ export interface IntentoExamen {
 }
 
 export const getHistorial = async (): Promise<IntentoExamen[]> => {
-  // Extraemos solo el array 'intentos' de la respuesta del backend
   const data = await fetchAPI<HistorialResponse>('/intentos');
-  return data.intentos || []; // Nos aseguramos de devolver siempre un array
+
+  // 🔥 FILTRO CRÍTICO: Solo mostramos los que realmente terminaron.
+  // Esto hace que tu UI sea "inmune" a intentos basura o abandonados.
+  if (!data.intentos) return [];
+
+  return data.intentos.filter(intento => intento.estado === 'completado');
 };
 
 
@@ -42,6 +46,16 @@ export const toggleFavorito = async (examenId: string) => {
     method: 'POST',
   });
 };
+
+/**
+ * Elimina un intento que no ha sido finalizado (limpieza de historial).
+ */
+export const abandonarIntento = async (intentoId: string): Promise<void> => {
+  return fetchAPI(`/intentos/${intentoId}`, {
+    method: 'DELETE',
+  });
+};
+
 export interface ExamenResumen {
   id: string;
   titulo: string;
@@ -50,6 +64,7 @@ export interface ExamenResumen {
   anio: number;
   total_preguntas: number;
   duracion_minutos: number;
+  es_demo: boolean;
 }
 
 export const getFavoritos = async (): Promise<ExamenResumen[]> => {

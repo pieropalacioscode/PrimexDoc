@@ -1,4 +1,6 @@
+// backend > internal > handler >  me.go
 package handler
+
 //Endpoint para consultar perfil del docente autenticado
 import (
 	"net/http"

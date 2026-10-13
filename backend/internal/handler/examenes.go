@@ -1,19 +1,20 @@
-//internal/handler/examenes.go
+// internal/handler/examenes.go
 package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
-	"fmt"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype" // IMPORTANTE: Agregado para los errores de pgtype
 
 	"github.com/alienwarecode/docent-primex-api/internal/auth"
 	"github.com/alienwarecode/docent-primex-api/internal/db"
-
 )
 
 // NUEVO: Función auxiliar interna para formatear URLs de imágenes
@@ -38,7 +39,11 @@ func NewExamenHandler(queries *db.Queries) *ExamenHandler {
 	return &ExamenHandler{queries: queries}
 }
 
-// GET /api/v1/examenes
+// GET /api/v1/examenes (autenticado) y GET /api/v1/examenes/publico (sin auth)
+// Ambas rutas usan ESTE MISMO handler y la MISMA query (ListExamenesActivos),
+// así que el catálogo público y el del dashboard NUNCA pueden desincronizarse
+// entre sí — son literalmente la misma fuente de datos. La única diferencia
+// entre ambas rutas es el middleware que las envuelve en router.go.
 func (h *ExamenHandler) ListarExamenes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -74,8 +79,9 @@ func (h *ExamenHandler) ListarExamenes(w http.ResponseWriter, r *http.Request) {
 			Anio:              e.Anio,
 			TotalPreguntas:    e.TotalPreguntas,
 			DuracionMinutos:   e.DuracionMinutos,
-			// Si tu ExamenResumenDTO tuviera imagen, se aplicaría aquí:
-			// ImagenPortada: formatearURLImagen(e.ImagenPortada.String),
+			// Fuente de verdad única: auth.ExamenesGratuitos (mismo mapa que
+			// usa RequireSubscription para el bypass freemium).
+			EsGratuito: auth.ExamenesGratuitos[eID.String()],
 		})
 	}
 
@@ -101,7 +107,9 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 
 	examenDB, err := h.queries.GetExamenByID(ctx, pgUUID)
 	if err != nil {
+		log.Printf("[ERROR ObtenerExamenPorID]: %v", err)
 		w.Header().Set("Content-Type", "application/json")
+
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Examen no encontrado"})
 		return
@@ -116,15 +124,15 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 	}
 
 	textosDTO := make([]TextoBaseDTO, 0, len(textosDB))
-    for _, t := range textosDB {
-        tID, _ := uuid.FromBytes(t.ID.Bytes[:])
-        textosDTO = append(textosDTO, TextoBaseDTO{
-            ID:              tID.String(), // CAMBIO: Agregado .String()
-            CodigoTextoBase: t.CodigoTextoBase, // Ahora sí existe en el DTO
-            Titulo:          t.Titulo.String,
-            Contenido:       t.Contenido,
-        })
-    }
+	for _, t := range textosDB {
+		tID, _ := uuid.FromBytes(t.ID.Bytes[:])
+		textosDTO = append(textosDTO, TextoBaseDTO{
+			ID:              tID.String(),      // CAMBIO: Agregado .String()
+			CodigoTextoBase: t.CodigoTextoBase, // Ahora sí existe en el DTO
+			Titulo:          t.Titulo.String,
+			Contenido:       t.Contenido,
+		})
+	}
 
 	preguntasDB, err := h.queries.GetPreguntasByExamenID(ctx, pgUUID)
 	if err != nil {
@@ -180,9 +188,10 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 			NumeroPregunta: p.NumeroPregunta,
 			TextoPregunta:  p.TextoPregunta,
 			TextoBaseID:    textoBaseIDPtr,
-			// NUEVO: Aquí aplicamos el formateo a la imagen de la pregunta
-			UrlImagen: formatearURLImagen(p.UrlImagen.String),
-			Opciones:  opciones,
+			UrlImagen:      formatearURLImagen(p.UrlImagen.String),
+			Subprueba:      p.Subprueba.String,
+			Componente:     p.Componente.String,
+			Opciones:       opciones,
 		})
 	}
 
@@ -207,39 +216,34 @@ func (h *ExamenHandler) ObtenerExamenPorID(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ExamenHandler) ListarFavoritos(w http.ResponseWriter, r *http.Request) {
-    userIDStr, ok := auth.GetUserID(r.Context())
-    if !ok {
-        w.WriteHeader(http.StatusUnauthorized)
-        return
-    }
-
-    u, _ := uuid.Parse(userIDStr)
-    pgUserID := pgtype.UUID{Bytes: u, Valid: true}
-
-    favs, err := h.queries.ListarExamenesGuardados(r.Context(), pgUserID)
-    if err != nil {
-        // Si hay error aquí, imprimelo en la consola del backend para ver qué dice
-        fmt.Printf("Error DB Favoritos: %v\n", err)
-        w.WriteHeader(http.StatusInternalServerError)
-        return
-    }
-
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(favs)
-}
-
-
-func (h *ExamenHandler) ToggleFavorito(w http.ResponseWriter, r *http.Request) {
-	// USAR EL HELPER DEL MIDDLEWARE
 	userIDStr, ok := auth.GetUserID(r.Context())
 	if !ok {
-		// Esto imprimirá en tu consola de Go si vuelve a fallar
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	u, _ := uuid.Parse(userIDStr)
+	pgUserID := pgtype.UUID{Bytes: u, Valid: true}
+
+	favs, err := h.queries.ListarExamenesGuardados(r.Context(), pgUserID)
+	if err != nil {
+		fmt.Printf("Error DB Favoritos: %v\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(favs)
+}
+
+func (h *ExamenHandler) ToggleFavorito(w http.ResponseWriter, r *http.Request) {
+	userIDStr, ok := auth.GetUserID(r.Context())
+	if !ok {
 		println("DEBUG: No se pudo extraer UserID del contexto con la llave correcta")
 		http.Error(w, `{"error":"No autorizado"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Convertir el string del contexto a UUID para la base de datos
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		http.Error(w, "ID de usuario inválido", http.StatusUnauthorized)
@@ -252,7 +256,6 @@ func (h *ExamenHandler) ToggleFavorito(w http.ResponseWriter, r *http.Request) {
 	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
 	pgExamenID := pgtype.UUID{Bytes: examenID, Valid: true}
 
-	// Lógica de Toggle
 	existe, _ := h.queries.EsExamenGuardado(r.Context(), db.EsExamenGuardadoParams{
 		UsuarioID: pgUserID,
 		ExamenID:  pgExamenID,
@@ -274,14 +277,12 @@ func (h *ExamenHandler) ToggleFavorito(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ExamenHandler) EliminarFavorito(w http.ResponseWriter, r *http.Request) {
-	// 1. Extraer el usuario_id del contexto (inyectado por el middleware de autenticación)
 	userID, ok := r.Context().Value("user_id").(uuid.UUID)
 	if !ok {
 		http.Error(w, "Usuario no autenticado", http.StatusUnauthorized)
 		return
 	}
 
-	// 2. Extraer el ID del examen desde la URL (usando chi router)
 	examenIDStr := chi.URLParam(r, "id")
 	examenID, err := uuid.Parse(examenIDStr)
 	if err != nil {
@@ -289,11 +290,9 @@ func (h *ExamenHandler) EliminarFavorito(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 3. Convertir los UUIDs a pgtype.UUID (formato que utiliza sqlc con pgx/v5)
 	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
 	pgExamenID := pgtype.UUID{Bytes: examenID, Valid: true}
 
-	// 4. Ejecutar la consulta generada por sqlc
 	err = h.queries.EliminarExamenGuardado(r.Context(), db.EliminarExamenGuardadoParams{
 		UsuarioID: pgUserID,
 		ExamenID:  pgExamenID,
@@ -303,14 +302,12 @@ func (h *ExamenHandler) EliminarFavorito(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 5. Responder con confirmación de éxito
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "Examen eliminado de favoritos correctamente",
 	})
 }
-
 
 func (h *ExamenHandler) GetExamenParaEntrenamiento(w http.ResponseWriter, r *http.Request) {
 	examenIDStr := chi.URLParam(r, "id")
@@ -359,7 +356,7 @@ func (h *ExamenHandler) GetExamenParaEntrenamiento(w http.ResponseWriter, r *htt
 					ID:              tIDStr,
 					CodigoTextoBase: row.CodigoTextoBase.String,
 					Titulo:          row.TextoTitulo.String,
-					Contenido:       row.TextoContenido.String, // CORRECCIÓN: Agregado .String
+					Contenido:       row.TextoContenido.String,
 					ImagenURL:       formatearURLImagen(row.TextoImagen.String),
 				}
 			}

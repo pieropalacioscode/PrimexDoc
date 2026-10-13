@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type EstadoSoporte string
+
+const (
+	EstadoSoportePENDIENTE EstadoSoporte = "PENDIENTE"
+	EstadoSoporteENPROCESO EstadoSoporte = "EN_PROCESO"
+	EstadoSoporteRESUELTO  EstadoSoporte = "RESUELTO"
+)
+
+func (e *EstadoSoporte) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EstadoSoporte(s)
+	case string:
+		*e = EstadoSoporte(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EstadoSoporte: %T", src)
+	}
+	return nil
+}
+
+type NullEstadoSoporte struct {
+	EstadoSoporte EstadoSoporte `json:"estado_soporte"`
+	Valid         bool          `json:"valid"` // Valid is true if EstadoSoporte is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEstadoSoporte) Scan(value interface{}) error {
+	if value == nil {
+		ns.EstadoSoporte, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EstadoSoporte.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEstadoSoporte) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EstadoSoporte), nil
+}
+
 type EstadoSuscripcion string
 
 const (
@@ -97,6 +140,50 @@ func (ns NullTipoPlan) Value() (driver.Value, error) {
 	return string(ns.TipoPlan), nil
 }
 
+type TipoSoporte string
+
+const (
+	TipoSoporteRECLAMO        TipoSoporte = "RECLAMO"
+	TipoSoporteQUEJA          TipoSoporte = "QUEJA"
+	TipoSoporteSUGERENCIA     TipoSoporte = "SUGERENCIA"
+	TipoSoporteERRORCONTENIDO TipoSoporte = "ERROR_CONTENIDO"
+)
+
+func (e *TipoSoporte) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TipoSoporte(s)
+	case string:
+		*e = TipoSoporte(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TipoSoporte: %T", src)
+	}
+	return nil
+}
+
+type NullTipoSoporte struct {
+	TipoSoporte TipoSoporte `json:"tipo_soporte"`
+	Valid       bool        `json:"valid"` // Valid is true if TipoSoporte is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTipoSoporte) Scan(value interface{}) error {
+	if value == nil {
+		ns.TipoSoporte, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TipoSoporte.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTipoSoporte) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TipoSoporte), nil
+}
+
 type Examene struct {
 	ID                            pgtype.UUID        `json:"id"`
 	Titulo                        string             `json:"titulo"`
@@ -136,6 +223,31 @@ type IntentosExaman struct {
 	Estado                 string             `json:"estado"`
 	IniciadoEn             pgtype.Timestamptz `json:"iniciado_en"`
 	FinalizadoEn           pgtype.Timestamptz `json:"finalizado_en"`
+}
+
+type Noticia struct {
+	ID              pgtype.UUID        `json:"id"`
+	Titulo          string             `json:"titulo"`
+	Slug            string             `json:"slug"`
+	Resumen         string             `json:"resumen"`
+	ContenidoHtml   string             `json:"contenido_html"`
+	Categoria       string             `json:"categoria"`
+	BannerFilename  string             `json:"banner_filename"`
+	MetaTitle       pgtype.Text        `json:"meta_title"`
+	MetaDescription pgtype.Text        `json:"meta_description"`
+	Keywords        pgtype.Text        `json:"keywords"`
+	Vistas          pgtype.Int4        `json:"vistas"`
+	PublicadoEn     pgtype.Timestamptz `json:"publicado_en"`
+	ActualizadoEn   pgtype.Timestamptz `json:"actualizado_en"`
+}
+
+type OauthExchangeCode struct {
+	CodeHash    string             `json:"code_hash"`
+	BrowserHash string             `json:"browser_hash"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type Opcione struct {
@@ -178,6 +290,23 @@ type RespuestasIntento struct {
 	RespondidoEn         pgtype.Timestamptz `json:"respondido_en"`
 }
 
+type SoporteTicket struct {
+	ID             pgtype.UUID        `json:"id"`
+	NumeroTicket   string             `json:"numero_ticket"`
+	UsuarioID      pgtype.UUID        `json:"usuario_id"`
+	NombreCompleto string             `json:"nombre_completo"`
+	DniCe          pgtype.Text        `json:"dni_ce"`
+	Correo         string             `json:"correo"`
+	Tipo           TipoSoporte        `json:"tipo"`
+	Asunto         string             `json:"asunto"`
+	Detalle        string             `json:"detalle"`
+	Metadata       []byte             `json:"metadata"`
+	Estado         NullEstadoSoporte  `json:"estado"`
+	LeidoPorAdmin  pgtype.Bool        `json:"leido_por_admin"`
+	CreadoEn       pgtype.Timestamptz `json:"creado_en"`
+	ActualizadoEn  pgtype.Timestamptz `json:"actualizado_en"`
+}
+
 type Suscripcione struct {
 	ID              pgtype.UUID           `json:"id"`
 	UsuarioID       pgtype.UUID           `json:"usuario_id"`
@@ -201,6 +330,16 @@ type TextosBase struct {
 	CreadoEn        pgtype.Timestamptz `json:"creado_en"`
 }
 
+type UserSession struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	TokenID      string             `json:"token_id"`
+	DeviceInfo   pgtype.Text        `json:"device_info"`
+	IpAddress    pgtype.Text        `json:"ip_address"`
+	LastActiveAt pgtype.Timestamptz `json:"last_active_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type Usuario struct {
 	ID               pgtype.UUID        `json:"id"`
 	Correo           string             `json:"correo"`
@@ -210,4 +349,5 @@ type Usuario struct {
 	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
 	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
 	ActualizadoEn    pgtype.Timestamptz `json:"actualizado_en"`
+	Telefono         pgtype.Text        `json:"telefono"`
 }

@@ -25,6 +25,22 @@ func (q *Queries) ActualizarContrasena(ctx context.Context, arg ActualizarContra
 	return err
 }
 
+const actualizarTelefono = `-- name: ActualizarTelefono :exec
+UPDATE usuarios
+SET telefono = $2, actualizado_en = NOW()
+WHERE id = $1
+`
+
+type ActualizarTelefonoParams struct {
+	ID       pgtype.UUID `json:"id"`
+	Telefono pgtype.Text `json:"telefono"`
+}
+
+func (q *Queries) ActualizarTelefono(ctx context.Context, arg ActualizarTelefonoParams) error {
+	_, err := q.db.Exec(ctx, actualizarTelefono, arg.ID, arg.Telefono)
+	return err
+}
+
 const crearUsuario = `-- name: CrearUsuario :one
 INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol)
 VALUES ($1, $2, $3, $4)
@@ -46,7 +62,6 @@ type CrearUsuarioRow struct {
 	CreadoEn       pgtype.Timestamptz `json:"creado_en"`
 }
 
-// queries/usuarios.sql name: CrearUsuario :one
 func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error) {
 	row := q.db.QueryRow(ctx, crearUsuario,
 		arg.Correo,
@@ -67,7 +82,7 @@ func (q *Queries) CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (Cre
 
 const extenderSuscripcion = `-- name: ExtenderSuscripcion :exec
 UPDATE usuarios
-SET suscripcion_hasta = CASE 
+SET suscripcion_hasta = CASE
     WHEN suscripcion_hasta > NOW() THEN suscripcion_hasta + ($2 || ' month')::interval
     ELSE NOW() + ($2 || ' month')::interval
 END,
@@ -90,13 +105,13 @@ func (q *Queries) ExtenderSuscripcion(ctx context.Context, arg ExtenderSuscripci
 const getOrCreateUserByEmail = `-- name: GetOrCreateUserByEmail :one
 INSERT INTO usuarios (correo, contrasena_hash, nombre_completo, rol)
 VALUES ($1, 'OAUTH_GOOGLE_PLACEHOLDER', $2, 'usuario')
-ON CONFLICT (correo) DO UPDATE 
-SET nombre_completo = CASE 
-    WHEN usuarios.nombre_completo = '' OR usuarios.nombre_completo IS NULL 
-    THEN EXCLUDED.nombre_completo 
-    ELSE usuarios.nombre_completo 
+ON CONFLICT (correo) DO UPDATE
+SET nombre_completo = CASE
+    WHEN usuarios.nombre_completo = '' OR usuarios.nombre_completo IS NULL
+    THEN EXCLUDED.nombre_completo
+    ELSE usuarios.nombre_completo
 END
-RETURNING id, correo, rol, nombre_completo
+RETURNING id, correo, rol, nombre_completo, suscripcion_hasta
 `
 
 type GetOrCreateUserByEmailParams struct {
@@ -105,13 +120,13 @@ type GetOrCreateUserByEmailParams struct {
 }
 
 type GetOrCreateUserByEmailRow struct {
-	ID             pgtype.UUID `json:"id"`
-	Correo         string      `json:"correo"`
-	Rol            pgtype.Text `json:"rol"`
-	NombreCompleto string      `json:"nombre_completo"`
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	Rol              pgtype.Text        `json:"rol"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
 }
 
-// Si ya existe, opcionalmente actualizamos su nombre si estaba vacío, o simplemente lo dejamos intacto
 func (q *Queries) GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUserByEmailParams) (GetOrCreateUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getOrCreateUserByEmail, arg.Correo, arg.NombreCompleto)
 	var i GetOrCreateUserByEmailRow
@@ -120,12 +135,13 @@ func (q *Queries) GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUse
 		&i.Correo,
 		&i.Rol,
 		&i.NombreCompleto,
+		&i.SuscripcionHasta,
 	)
 	return i, err
 }
 
 const getUsuarioByID = `-- name: GetUsuarioByID :one
-SELECT id, correo, nombre_completo, rol, suscripcion_hasta
+SELECT id, correo, nombre_completo, rol, telefono, suscripcion_hasta
 FROM usuarios
 WHERE id = $1
 `
@@ -135,6 +151,7 @@ type GetUsuarioByIDRow struct {
 	Correo           string             `json:"correo"`
 	NombreCompleto   string             `json:"nombre_completo"`
 	Rol              pgtype.Text        `json:"rol"`
+	Telefono         pgtype.Text        `json:"telefono"`
 	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
 }
 
@@ -146,6 +163,7 @@ func (q *Queries) GetUsuarioByID(ctx context.Context, id pgtype.UUID) (GetUsuari
 		&i.Correo,
 		&i.NombreCompleto,
 		&i.Rol,
+		&i.Telefono,
 		&i.SuscripcionHasta,
 	)
 	return i, err
@@ -170,10 +188,24 @@ func (q *Queries) GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodi
 	return id, err
 }
 
+const invalidarCodigosPrevios = `-- name: InvalidarCodigosPrevios :exec
+UPDATE password_resets
+SET usado = TRUE
+WHERE correo = $1 AND usado = FALSE
+`
+
+func (q *Queries) InvalidarCodigosPrevios(ctx context.Context, correo string) error {
+	_, err := q.db.Exec(ctx, invalidarCodigosPrevios, correo)
+	return err
+}
+
 const listarUsuariosParaAdmin = `-- name: ListarUsuariosParaAdmin :many
-SELECT id, correo, nombre_completo, rol, suscripcion_hasta, creado_en
+SELECT id, correo, nombre_completo, rol, telefono, suscripcion_hasta, creado_en
 FROM usuarios
-WHERE correo ILIKE '%' || $1 || '%'
+WHERE $1::text = ''
+   OR correo ILIKE '%' || $1 || '%'
+   OR nombre_completo ILIKE '%' || $1 || '%'
+   OR telefono ILIKE '%' || $1 || '%'
 ORDER BY creado_en DESC
 `
 
@@ -182,11 +214,12 @@ type ListarUsuariosParaAdminRow struct {
 	Correo           string             `json:"correo"`
 	NombreCompleto   string             `json:"nombre_completo"`
 	Rol              pgtype.Text        `json:"rol"`
+	Telefono         pgtype.Text        `json:"telefono"`
 	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
 	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
 }
 
-func (q *Queries) ListarUsuariosParaAdmin(ctx context.Context, dollar_1 pgtype.Text) ([]ListarUsuariosParaAdminRow, error) {
+func (q *Queries) ListarUsuariosParaAdmin(ctx context.Context, dollar_1 string) ([]ListarUsuariosParaAdminRow, error) {
 	rows, err := q.db.Query(ctx, listarUsuariosParaAdmin, dollar_1)
 	if err != nil {
 		return nil, err
@@ -200,6 +233,7 @@ func (q *Queries) ListarUsuariosParaAdmin(ctx context.Context, dollar_1 pgtype.T
 			&i.Correo,
 			&i.NombreCompleto,
 			&i.Rol,
+			&i.Telefono,
 			&i.SuscripcionHasta,
 			&i.CreadoEn,
 		); err != nil {
@@ -223,7 +257,7 @@ func (q *Queries) MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) err
 }
 
 const obtenerUsuarioPorCorreo = `-- name: ObtenerUsuarioPorCorreo :one
-SELECT id, correo, contrasena_hash, nombre_completo, rol, suscripcion_hasta, creado_en, actualizado_en FROM usuarios WHERE correo = $1 LIMIT 1
+SELECT id, correo, contrasena_hash, nombre_completo, rol, suscripcion_hasta, creado_en, actualizado_en, telefono FROM usuarios WHERE correo = $1 LIMIT 1
 `
 
 func (q *Queries) ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error) {
@@ -238,12 +272,13 @@ func (q *Queries) ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (U
 		&i.SuscripcionHasta,
 		&i.CreadoEn,
 		&i.ActualizadoEn,
+		&i.Telefono,
 	)
 	return i, err
 }
 
 const validarCodigoRecuperacion = `-- name: ValidarCodigoRecuperacion :one
-SELECT id, correo, codigo, expira_en, usado, creado_en FROM password_resets 
+SELECT id, correo, codigo, expira_en, usado, creado_en FROM password_resets
 WHERE correo = $1 AND codigo = $2 AND usado = FALSE AND expira_en > NOW()
 LIMIT 1
 `

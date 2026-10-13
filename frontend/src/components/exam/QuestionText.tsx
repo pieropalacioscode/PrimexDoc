@@ -20,15 +20,41 @@ import { parseTextBlocks, tokenizeFractions, TextToken } from '@/utils/textForma
 import { Fraction } from './Fraction';
 
 function renderTokens(tokens: TextToken[], keyPrefix: string) {
-  return tokens.map((token, i) =>
-    token.type === 'fraction' ? (
-      <Fraction key={`${keyPrefix}-f${i}`} numerator={token.numerator} denominator={token.denominator} />
-    ) : (
-      // Los strings sueltos en un array de children de React NO
-      // necesitan "key" (React solo exige key en elementos).
-      token.value
-    )
-  );
+  return tokens.map((token, i) => {
+    const key = `${keyPrefix}-${i}`;
+
+    switch (token.type) {
+      case 'fraction':
+        return (
+          <Fraction
+            key={key}
+            numerator={token.numerator}
+            denominator={token.denominator}
+          />
+        );
+
+      case 'exponent':
+        return (
+          <span key={key}>
+            {token.base}<sup>{token.exponent}</sup>
+          </span>
+        );
+
+      case 'formula':
+        // Puedes darle un estilo especial a las fórmulas aquí
+        return (
+          <span key={key} className="font-mono text-blue-700 italic">
+            {token.value}
+          </span>
+        );
+
+      case 'text':
+        return token.value;
+
+      default:
+        return null;
+    }
+  });
 }
 
 interface InlineTextProps {

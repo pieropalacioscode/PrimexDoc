@@ -1,50 +1,41 @@
-'use client';
-
-import React, { useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+//frontend > src > app > (dashboard) > layout.tsx >
+import Link from 'next/link';
 import { Sidebar } from './Sidebar';
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, loading } = useAuth();
-  const router = useRouter();
-
-  // Soporta tanto 'isLoading' como 'loading'
-  const isAuthLoading = isLoading ?? loading;
-
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isAuthLoading, router]);
-
-  // Pantalla de carga mientras se valida la sesión
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-sm text-slate-500 font-medium">Cargando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Si no hay usuario, evita renderizar mientras se completa la redirección
-  if (!user) {
-    return null;
-  }
-
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      {/* Sidebar de navegación */}
+    <div className="min-h-screen bg-slate-50">
       <Sidebar />
-      
-      {/* Contenido Dinámico */}
-      <main className="flex-1 lg:ml-64 p-4 md:p-8">
-        <div className="max-w-5xl mx-auto">
+
+      {/* Contenido principal: respeta el ancho del sidebar en desktop
+          y deja espacio abajo en móvil para la bottom bar */}
+      <main className="lg:pl-64 pb-24 lg:pb-0 min-h-screen flex flex-col">
+        <div className="flex-1">
           {children}
         </div>
+
+        {/* Franja legal mínima — visible solo en desktop */}
+        <footer className="hidden lg:flex items-center justify-center gap-6 py-6 border-t border-slate-100 bg-white/50 backdrop-blur-sm">
+          <Link href="/terminos" className="text-[10px] font-black text-slate-300 hover:text-blue-600 uppercase tracking-widest transition-colors">
+            Términos
+          </Link>
+          <span className="text-slate-200 text-[10px]">•</span>
+          <Link href="/privacidad" className="text-[10px] font-black text-slate-300 hover:text-blue-600 uppercase tracking-widest transition-colors">
+            Privacidad
+          </Link>
+          <span className="text-slate-200 text-[10px]">•</span>
+          <Link href="/reclamaciones" className="text-[10px] font-black text-slate-300 hover:text-blue-600 uppercase tracking-widest transition-colors">
+            Libro de Reclamaciones
+          </Link>
+          <span className="text-slate-200 text-[10px]">•</span>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+            RUC: 20613771591
+          </p>
+        </footer>
       </main>
     </div>
   );

@@ -25,7 +25,8 @@ func NewIntentoHandler(queries *db.Queries) *IntentoHandler {
 // 💡 HELPERS AUXILIARES DE RESPUESTA JSON
 // ==========================================
 
-func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
+// INTENTOS.GO:...
+func respondJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
@@ -470,6 +471,7 @@ func (h *IntentoHandler) ObtenerResultadoDetalle(w http.ResponseWriter, r *http.
 		PreguntaID           uuid.UUID   `json:"pregunta_id"`
 		NumeroPregunta       int32       `json:"numero_pregunta"`
 		Enunciado            string      `json:"enunciado"`
+		Componente           string      `json:"componente"`
 		TextoBaseID          *uuid.UUID  `json:"texto_base_id,omitempty"`
 		TextoBaseTitulo      string      `json:"texto_base_titulo,omitempty"`
 		TextoBaseContenido   string      `json:"texto_base_contenido,omitempty"`
@@ -515,6 +517,7 @@ func (h *IntentoHandler) ObtenerResultadoDetalle(w http.ResponseWriter, r *http.
 			PreguntaID:           pID,
 			NumeroPregunta:       d.NumeroPregunta,
 			Enunciado:            d.Enunciado,
+			Componente:           d.Componente,
 			TextoBaseID:          textoBaseIDPtr,
 			TextoBaseTitulo:      tbTitulo,
 			TextoBaseContenido:   tbContenido,
@@ -560,39 +563,57 @@ func (h *IntentoHandler) ObtenerResultadoDetalle(w http.ResponseWriter, r *http.
 }
 
 // DELETE /api/v1/intentos/{id}
+// EliminarIntento maneja el borrado de un intento (usado para "Abandonar" examen).
+// DELETE /api/v1/intentos/{id}
 func (h *IntentoHandler) EliminarIntento(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// 1. Obtener el ID del usuario del token JWT
+	// 1. Obtención y validación quirúrgica del ID de Usuario desde el JWT
 	userIDStr, ok := auth.GetUserID(ctx)
 	if !ok || userIDStr == "" {
-		respondError(w, http.StatusUnauthorized, "Usuario no autenticado")
+		// Eliminamos el "h." porque respondError es una función del paquete
+		respondError(w, http.StatusUnauthorized, "Sesión inválida o expirada")
 		return
 	}
+
 	usuarioUUID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "ID de usuario inválido")
+		respondError(w, http.StatusBadRequest, "Formato de ID de usuario no válido")
 		return
 	}
 
-	// 2. Obtener el ID del intento desde los parámetros URL
+	// 2. Obtención y validación del ID del Intento desde la URL
 	intentoIDStr := chi.URLParam(r, "id")
+	if intentoIDStr == "" {
+		respondError(w, http.StatusBadRequest, "El ID del intento es requerido")
+		return
+	}
+
 	intentoUUID, err := uuid.Parse(intentoIDStr)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "ID de intento inválido")
+		respondError(w, http.StatusBadRequest, "Formato de ID de intento no válido")
 		return
 	}
 
-	// 3. Ejecutar la consulta SQL de eliminación
-	err = h.queries.EliminarIntento(ctx, db.EliminarIntentoParams{
+	// 3. Ejecución de la eliminación con verificación de propiedad
+	// Nota: Esto asegura que el usuario solo borre SUS propios intentos
+	params := db.EliminarIntentoParams{
 		ID:        pgtype.UUID{Bytes: intentoUUID, Valid: true},
 		UsuarioID: pgtype.UUID{Bytes: usuarioUUID, Valid: true},
-	})
+	}
+
+	err = h.queries.EliminarIntento(ctx, params)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Error al eliminar el intento")
+		// Logueamos el error para el servidor (puedes usar h.logger si tienes uno)
+		log.Printf("Error [DB] al eliminar intento %s para usuario %s: %v", intentoIDStr, userIDStr, err)
+		respondError(w, http.StatusInternalServerError, "No se pudo procesar la solicitud de eliminación")
 		return
 	}
 
-	// 4. Responder con éxito
-	respondJSON(w, http.StatusOK, map[string]string{"mensaje": "Intento eliminado correctamente"})
+	// 4. Respuesta exitosa
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "success",
+		"message": "Intento descartado y eliminado correctamente",
+		"id":      intentoIDStr,
+	})
 }

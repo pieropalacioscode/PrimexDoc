@@ -26,6 +26,10 @@ type ExamenResumenDTO struct {
 	Anio              int32     `json:"anio"`
 	TotalPreguntas    int32     `json:"total_preguntas"`
 	DuracionMinutos   int32     `json:"duracion_minutos"`
+	// EsGratuito: calculado desde auth.ExamenesGratuitos (misma fuente de
+	// verdad que usa RequireSubscription). Le permite al frontend mostrar
+	// el badge "GRATIS" sin mantener una lista de IDs duplicada.
+	EsGratuito bool `json:"es_gratuito"`
 }
 
 type TextoBaseDTO struct {
@@ -48,6 +52,8 @@ type PreguntaDTO struct {
 	TextoPregunta  string      `json:"texto_pregunta"`
 	TextoBaseID    *uuid.UUID  `json:"texto_base_id,omitempty"`
 	UrlImagen      string      `json:"url_imagen,omitempty"`
+	Subprueba      string      `json:"subprueba,omitempty"`
+	Componente     string      `json:"componente,omitempty"`
 	Opciones       []OpcionDTO `json:"opciones"`
 }
 
@@ -184,6 +190,14 @@ type AnaliticaFullResponse struct {
 	IntentoID     uuid.UUID        `json:"intento_id"`
 	Subpruebas    []AnaliticaData  `json:"subpruebas"`
 	Componentes   []ComponenteData `json:"componentes"`
-	Debilidades   []string         `json:"debilidades"` 
+	Debilidades   []string         `json:"debilidades"`
 	Recomendacion string           `json:"recomendacion"`
+}
+
+type UsuarioDTO struct {
+	ID               string `json:"id"`
+	Correo           string `json:"correo"`
+	NombreCompleto   string `json:"nombre_completo"`
+	Rol              string `json:"rol"`
+	SuscripcionHasta string `json:"suscripcion_hasta,omitempty"`
 }

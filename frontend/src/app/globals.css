@@ -100,7 +100,7 @@
 }
 
 /* Brillo en movimiento para barras de progreso / medidores */
-@keyframes pd-shimmer {
+/* @keyframes pd-shimmer {
   0% {
     background-position: 200% 0;
   }
@@ -113,6 +113,20 @@
   background-image: linear-gradient(90deg, var(--pd-green) 0%, #3fd67a 45%, var(--pd-green) 100%);
   background-size: 220% 100%;
   animation: pd-shimmer 3s linear infinite;
+} */
+
+/* Brillo diagonal para botones CTA (Hero) */
+@keyframes pd-shine {
+  0% {
+    transform: translateX(-150%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-12deg);
+  }
+}
+
+.animate-shine {
+  animation: pd-shine 2.8s ease-in-out infinite;
 }
 
 /* Respeta la preferencia de movimiento reducido del sistema */
@@ -123,7 +137,8 @@
     animation: none !important;
   }
   .pd-pulse-ring::before,
-  .pd-shimmer-bar {
+  .pd-shimmer-bar,
+  .animate-shine {
     animation: none !important;
   }
 }

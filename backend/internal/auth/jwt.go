@@ -1,3 +1,4 @@
+// backend > internal > auth > jwt.go
 package auth
 
 import (
@@ -36,11 +37,15 @@ func GenerarToken(userID, correo, rol, nombre, secret string) (string, error) {
 // ValidarToken comprueba la validez de un token recibido
 func ValidarToken(tokenStr, secret string) (*JWTCustomClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &JWTCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, errors.New("método de firma no válido")
 		}
 		return []byte(secret), nil
-	})
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer("docent-smart-primex"),
+		jwt.WithExpirationRequired(),
+	)
 
 	if err != nil {
 		return nil, err

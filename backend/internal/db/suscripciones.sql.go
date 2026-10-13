@@ -13,10 +13,10 @@ import (
 
 const activarSuscripcion = `-- name: ActivarSuscripcion :one
 INSERT INTO suscripciones (
-    usuario_id, plan, monto, metodo_pago, numero_operacion, fecha_expiracion
+    usuario_id, plan, monto, metodo_pago, numero_operacion, fecha_expiracion, estado
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
-) RETURNING id, estado, fecha_inicio, fecha_expiracion
+    $1, $2, $3, $4, $5, $6, 'activa'
+) RETURNING id, usuario_id, plan, monto, estado, metodo_pago, numero_operacion, fecha_inicio, fecha_expiracion, creado_en
 `
 
 type ActivarSuscripcionParams struct {
@@ -28,14 +28,7 @@ type ActivarSuscripcionParams struct {
 	FechaExpiracion pgtype.Timestamptz `json:"fecha_expiracion"`
 }
 
-type ActivarSuscripcionRow struct {
-	ID              pgtype.UUID           `json:"id"`
-	Estado          NullEstadoSuscripcion `json:"estado"`
-	FechaInicio     pgtype.Timestamptz    `json:"fecha_inicio"`
-	FechaExpiracion pgtype.Timestamptz    `json:"fecha_expiracion"`
-}
-
-func (q *Queries) ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (ActivarSuscripcionRow, error) {
+func (q *Queries) ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (Suscripcione, error) {
 	row := q.db.QueryRow(ctx, activarSuscripcion,
 		arg.UsuarioID,
 		arg.Plan,
@@ -44,58 +37,286 @@ func (q *Queries) ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcion
 		arg.NumeroOperacion,
 		arg.FechaExpiracion,
 	)
-	var i ActivarSuscripcionRow
+	var i Suscripcione
 	err := row.Scan(
 		&i.ID,
-		&i.Estado,
-		&i.FechaInicio,
-		&i.FechaExpiracion,
-	)
-	return i, err
-}
-
-const checkActiveSubscription = `-- name: CheckActiveSubscription :one
-SELECT count(*) > 0 AS has_active_subscription
-FROM suscripciones 
-WHERE usuario_id = $1 
-  AND estado = 'activa' 
-  AND fecha_expiracion > NOW()
-`
-
-func (q *Queries) CheckActiveSubscription(ctx context.Context, usuarioID pgtype.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, checkActiveSubscription, usuarioID)
-	var has_active_subscription bool
-	err := row.Scan(&has_active_subscription)
-	return has_active_subscription, err
-}
-
-const getSuscripcionActiva = `-- name: GetSuscripcionActiva :one
-SELECT id, plan, estado, fecha_inicio, fecha_expiracion
-FROM suscripciones
-WHERE usuario_id = $1 
-  AND estado = 'activa' 
-  AND fecha_expiracion > NOW()
-ORDER BY fecha_expiracion DESC
-LIMIT 1
-`
-
-type GetSuscripcionActivaRow struct {
-	ID              pgtype.UUID           `json:"id"`
-	Plan            TipoPlan              `json:"plan"`
-	Estado          NullEstadoSuscripcion `json:"estado"`
-	FechaInicio     pgtype.Timestamptz    `json:"fecha_inicio"`
-	FechaExpiracion pgtype.Timestamptz    `json:"fecha_expiracion"`
-}
-
-func (q *Queries) GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error) {
-	row := q.db.QueryRow(ctx, getSuscripcionActiva, usuarioID)
-	var i GetSuscripcionActivaRow
-	err := row.Scan(
-		&i.ID,
+		&i.UsuarioID,
 		&i.Plan,
+		&i.Monto,
 		&i.Estado,
+		&i.MetodoPago,
+		&i.NumeroOperacion,
 		&i.FechaInicio,
 		&i.FechaExpiracion,
+		&i.CreadoEn,
 	)
 	return i, err
+}
+
+const actualizarActividadSesion = `-- name: ActualizarActividadSesion :exec
+UPDATE user_sessions
+SET last_active_at = NOW()
+WHERE token_id = $1
+`
+
+func (q *Queries) ActualizarActividadSesion(ctx context.Context, tokenID string) error {
+	_, err := q.db.Exec(ctx, actualizarActividadSesion, tokenID)
+	return err
+}
+
+const cerrarSesion = `-- name: CerrarSesion :exec
+DELETE FROM user_sessions WHERE token_id = $1
+`
+
+func (q *Queries) CerrarSesion(ctx context.Context, tokenID string) error {
+	_, err := q.db.Exec(ctx, cerrarSesion, tokenID)
+	return err
+}
+
+const contarSesionesActivas = `-- name: ContarSesionesActivas :one
+SELECT COUNT(*) FROM user_sessions WHERE user_id = $1
+`
+
+func (q *Queries) ContarSesionesActivas(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, contarSesionesActivas, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const eliminarSesionMasAntigua = `-- name: EliminarSesionMasAntigua :exec
+DELETE FROM user_sessions
+WHERE id = (
+    SELECT us.id
+    FROM user_sessions us
+    WHERE us.user_id = $1
+    ORDER BY us.last_active_at ASC
+    LIMIT 1
+)
+`
+
+func (q *Queries) EliminarSesionMasAntigua(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, eliminarSesionMasAntigua, userID)
+	return err
+}
+
+const listarNuevosUsuarios = `-- name: ListarNuevosUsuarios :many
+
+SELECT id, correo, nombre_completo, rol, telefono, suscripcion_hasta, creado_en
+FROM usuarios
+WHERE creado_en >= NOW() - ($1::text || ' days')::interval
+ORDER BY creado_en DESC
+`
+
+type ListarNuevosUsuariosRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	Rol              pgtype.Text        `json:"rol"`
+	Telefono         pgtype.Text        `json:"telefono"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+}
+
+// ============================================================================
+// 2. NOTIFICACIONES Y ALERTAS PARA ADMINISTRACIÓN (/admin)
+// ============================================================================
+// Inteligente: Trae a TODOS los registrados recientemente (ej. últimas 48h o 7 días).
+// Así ves a los recién llegados aunque YA les hayas activado el plan (como Dionisio).
+func (q *Queries) ListarNuevosUsuarios(ctx context.Context, dias string) ([]ListarNuevosUsuariosRow, error) {
+	rows, err := q.db.Query(ctx, listarNuevosUsuarios, dias)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListarNuevosUsuariosRow{}
+	for rows.Next() {
+		var i ListarNuevosUsuariosRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Correo,
+			&i.NombreCompleto,
+			&i.Rol,
+			&i.Telefono,
+			&i.SuscripcionHasta,
+			&i.CreadoEn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listarUsuariosExpirados = `-- name: ListarUsuariosExpirados :many
+SELECT id, correo, nombre_completo, rol, telefono, suscripcion_hasta, creado_en
+FROM usuarios
+WHERE suscripcion_hasta IS NOT NULL
+  AND suscripcion_hasta <= NOW()
+ORDER BY suscripcion_hasta DESC
+`
+
+type ListarUsuariosExpiradosRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	Rol              pgtype.Text        `json:"rol"`
+	Telefono         pgtype.Text        `json:"telefono"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+}
+
+func (q *Queries) ListarUsuariosExpirados(ctx context.Context) ([]ListarUsuariosExpiradosRow, error) {
+	rows, err := q.db.Query(ctx, listarUsuariosExpirados)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListarUsuariosExpiradosRow{}
+	for rows.Next() {
+		var i ListarUsuariosExpiradosRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Correo,
+			&i.NombreCompleto,
+			&i.Rol,
+			&i.Telefono,
+			&i.SuscripcionHasta,
+			&i.CreadoEn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listarUsuariosPorVencer = `-- name: ListarUsuariosPorVencer :many
+SELECT id, correo, nombre_completo, rol, telefono, suscripcion_hasta, creado_en
+FROM usuarios
+WHERE suscripcion_hasta > NOW()
+  AND suscripcion_hasta <= NOW() + ($1::text || ' days')::interval
+ORDER BY suscripcion_hasta ASC
+`
+
+type ListarUsuariosPorVencerRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Correo           string             `json:"correo"`
+	NombreCompleto   string             `json:"nombre_completo"`
+	Rol              pgtype.Text        `json:"rol"`
+	Telefono         pgtype.Text        `json:"telefono"`
+	SuscripcionHasta pgtype.Timestamptz `json:"suscripcion_hasta"`
+	CreadoEn         pgtype.Timestamptz `json:"creado_en"`
+}
+
+func (q *Queries) ListarUsuariosPorVencer(ctx context.Context, dias string) ([]ListarUsuariosPorVencerRow, error) {
+	rows, err := q.db.Query(ctx, listarUsuariosPorVencer, dias)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListarUsuariosPorVencerRow{}
+	for rows.Next() {
+		var i ListarUsuariosPorVencerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Correo,
+			&i.NombreCompleto,
+			&i.Rol,
+			&i.Telefono,
+			&i.SuscripcionHasta,
+			&i.CreadoEn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const obtenerResumenAdmin = `-- name: ObtenerResumenAdmin :one
+SELECT
+    COUNT(*) AS total_usuarios,
+    COUNT(CASE WHEN suscripcion_hasta > NOW() THEN 1 END) AS suscripciones_activas,
+    COUNT(CASE WHEN suscripcion_hasta > NOW() AND suscripcion_hasta <= NOW() + INTERVAL '7 days' THEN 1 END) AS por_vencer_7_dias,
+    COUNT(CASE WHEN creado_en >= NOW() - INTERVAL '7 days' THEN 1 END) AS nuevos_esta_semana
+FROM usuarios
+`
+
+type ObtenerResumenAdminRow struct {
+	TotalUsuarios        int64 `json:"total_usuarios"`
+	SuscripcionesActivas int64 `json:"suscripciones_activas"`
+	PorVencer7Dias       int64 `json:"por_vencer_7_dias"`
+	NuevosEstaSemana     int64 `json:"nuevos_esta_semana"`
+}
+
+func (q *Queries) ObtenerResumenAdmin(ctx context.Context) (ObtenerResumenAdminRow, error) {
+	row := q.db.QueryRow(ctx, obtenerResumenAdmin)
+	var i ObtenerResumenAdminRow
+	err := row.Scan(
+		&i.TotalUsuarios,
+		&i.SuscripcionesActivas,
+		&i.PorVencer7Dias,
+		&i.NuevosEstaSemana,
+	)
+	return i, err
+}
+
+const registrarSesion = `-- name: RegistrarSesion :one
+
+
+INSERT INTO user_sessions (user_id, token_id, device_info, ip_address)
+VALUES ($1, $2, $3, $4)
+RETURNING id
+`
+
+type RegistrarSesionParams struct {
+	UserID     pgtype.UUID `json:"user_id"`
+	TokenID    string      `json:"token_id"`
+	DeviceInfo pgtype.Text `json:"device_info"`
+	IpAddress  pgtype.Text `json:"ip_address"`
+}
+
+// sql/queries/suscripciones.sql
+// ============================================================================
+// 1. GESTIÓN DE SESIONES DE USUARIO (user_sessions)
+// ============================================================================
+func (q *Queries) RegistrarSesion(ctx context.Context, arg RegistrarSesionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, registrarSesion,
+		arg.UserID,
+		arg.TokenID,
+		arg.DeviceInfo,
+		arg.IpAddress,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const validarSesionToken = `-- name: ValidarSesionToken :one
+SELECT EXISTS(
+    SELECT 1 FROM user_sessions
+    WHERE user_id = $1 AND token_id = $2
+)
+`
+
+type ValidarSesionTokenParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	TokenID string      `json:"token_id"`
+}
+
+func (q *Queries) ValidarSesionToken(ctx context.Context, arg ValidarSesionTokenParams) (bool, error) {
+	row := q.db.QueryRow(ctx, validarSesionToken, arg.UserID, arg.TokenID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

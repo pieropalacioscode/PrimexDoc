@@ -19,7 +19,8 @@ WHERE examen_id = $1
 ORDER BY codigo_texto_base ASC;
 
 -- name: GetPreguntasByExamenID :many
-SELECT id, examen_id, texto_base_id, numero_pregunta, texto_pregunta, url_imagen, explicacion
+
+SELECT id, examen_id, texto_base_id, numero_pregunta, texto_pregunta, url_imagen, explicacion, subprueba, componente
 FROM preguntas
 WHERE examen_id = $1
 ORDER BY numero_pregunta ASC;
@@ -31,9 +32,9 @@ WHERE pregunta_id = ANY($1::uuid[])
 ORDER BY etiqueta ASC;
 
 -- name: GetExamenDetalleEntrenamiento :many
-SELECT 
+SELECT
     e.id AS examen_id, e.titulo, e.duracion_minutos,
-    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen, 
+    p.id AS pregunta_id, p.numero_pregunta, p.texto_pregunta, p.url_imagen AS pregunta_imagen,
     p.explicacion, p.subprueba, p.componente, p.texto_base_id,
     o.id AS opcion_id, o.etiqueta, o.texto_opcion, o.es_correcta,
     t.id AS texto_id, t.codigo_texto_base, -- <--- AGREGAR ESTA LÍNEA

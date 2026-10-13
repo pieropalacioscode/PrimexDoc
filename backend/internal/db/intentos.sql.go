@@ -28,7 +28,7 @@ func (q *Queries) EliminarIntento(ctx context.Context, arg EliminarIntentoParams
 
 const finalizarIntento = `-- name: FinalizarIntento :exec
 UPDATE intentos_examen
-SET 
+SET
     puntaje = $2,
     preguntas_correctas = $3,
     preguntas_incorrectas = $4,
@@ -60,7 +60,7 @@ func (q *Queries) FinalizarIntento(ctx context.Context, arg FinalizarIntentoPara
 }
 
 const getClavesYExplicacionesByExamenID = `-- name: GetClavesYExplicacionesByExamenID :many
-SELECT 
+SELECT
     p.id AS pregunta_id,
     p.numero_pregunta,
     COALESCE(o.id, '00000000-0000-0000-0000-000000000000'::uuid) AS opcion_correcta_id,
@@ -103,7 +103,7 @@ func (q *Queries) GetClavesYExplicacionesByExamenID(ctx context.Context, examenI
 }
 
 const getRespuestasPorIntentoID = `-- name: GetRespuestasPorIntentoID :many
-SELECT 
+SELECT
     pregunta_id,
     opcion_seleccionada_id,
     es_correcta
@@ -187,9 +187,9 @@ func (q *Queries) IniciarIntento(ctx context.Context, arg IniciarIntentoParams) 
 }
 
 const listarIntentosPorUsuario = `-- name: ListarIntentosPorUsuario :many
-SELECT 
-    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo, 
-    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+SELECT
+    i.id, i.examen_id, e.titulo AS examen_titulo, e.nivel, e.tipo, e.anio, i.modo,
+    i.puntaje, i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas,
     i.tiempo_empleado_segundos, -- 👈 PARA MOSTRAR TIEMPOS EN EL HISTORIAL
     i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
@@ -253,16 +253,17 @@ func (q *Queries) ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype
 }
 
 const obtenerDetalleResultado = `-- name: ObtenerDetalleResultado :many
-SELECT 
-    p.id AS pregunta_id, 
-    p.numero_pregunta, 
-    p.texto_pregunta AS enunciado, 
-    tb.id AS texto_base_id, 
+SELECT
+    p.id AS pregunta_id,
+    p.numero_pregunta,
+    p.texto_pregunta AS enunciado,
+    COALESCE(NULLIF(p.componente, ''), 'General')::TEXT AS componente,
+    tb.id AS texto_base_id,
     tb.titulo AS texto_base_titulo,
     tb.contenido AS texto_base_contenido,
-    p.explicacion, 
-    ri.opcion_seleccionada_id, 
-    o_correcta.id AS opcion_correcta_id, 
+    p.explicacion,
+    ri.opcion_seleccionada_id,
+    o_correcta.id AS opcion_correcta_id,
     ri.es_correcta,
     (
         SELECT jsonb_agg(jsonb_build_object(
@@ -285,6 +286,7 @@ type ObtenerDetalleResultadoRow struct {
 	PreguntaID           pgtype.UUID `json:"pregunta_id"`
 	NumeroPregunta       int32       `json:"numero_pregunta"`
 	Enunciado            string      `json:"enunciado"`
+	Componente           string      `json:"componente"`
 	TextoBaseID          pgtype.UUID `json:"texto_base_id"`
 	TextoBaseTitulo      pgtype.Text `json:"texto_base_titulo"`
 	TextoBaseContenido   pgtype.Text `json:"texto_base_contenido"`
@@ -308,6 +310,7 @@ func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.
 			&i.PreguntaID,
 			&i.NumeroPregunta,
 			&i.Enunciado,
+			&i.Componente,
 			&i.TextoBaseID,
 			&i.TextoBaseTitulo,
 			&i.TextoBaseContenido,
@@ -328,9 +331,9 @@ func (q *Queries) ObtenerDetalleResultado(ctx context.Context, intentoID pgtype.
 }
 
 const obtenerIntentoPorID = `-- name: ObtenerIntentoPorID :one
-SELECT 
-    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje, 
-    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas, 
+SELECT
+    i.id, i.examen_id, e.titulo AS examen_titulo, i.modo, i.puntaje,
+    i.total_preguntas, i.preguntas_correctas, i.preguntas_incorrectas,
     i.tiempo_empleado_segundos, -- 👈 AQUÍ ESTÁ LA MAGIA DEL TIEMPO
     i.estado, i.iniciado_en, i.finalizado_en
 FROM intentos_examen i
@@ -379,18 +382,18 @@ func (q *Queries) ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPor
 }
 
 const obtenerIntentoPorIDSimple = `-- name: ObtenerIntentoPorIDSimple :one
-SELECT 
-    id, 
-    usuario_id, 
-    examen_id, 
-    modo, 
-    puntaje, 
-    total_preguntas, 
-    preguntas_correctas, 
-    preguntas_incorrectas, 
-    estado, 
-    iniciado_en, 
-    finalizado_en 
+SELECT
+    id,
+    usuario_id,
+    examen_id,
+    modo,
+    puntaje,
+    total_preguntas,
+    preguntas_correctas,
+    preguntas_incorrectas,
+    estado,
+    iniciado_en,
+    finalizado_en
 FROM intentos_examen  -- <--- Cambia "intentos" por "intentos_examen"
 WHERE id = $1
 `
@@ -438,8 +441,8 @@ INSERT INTO respuestas_intento (
 ) VALUES (
     $1, $2, $3, $4
 )
-ON CONFLICT (intento_id, pregunta_id) 
-DO UPDATE SET 
+ON CONFLICT (intento_id, pregunta_id)
+DO UPDATE SET
     opcion_seleccionada_id = EXCLUDED.opcion_seleccionada_id,
     es_correcta = EXCLUDED.es_correcta
 `

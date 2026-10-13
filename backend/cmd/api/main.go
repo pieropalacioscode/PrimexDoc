@@ -64,7 +64,7 @@ func main() {
 	appRouter := router.NewRouter(queries, auth.JWTMiddleware)
 
 	server := &http.Server{
-		Addr:         ":" + port,
+		Addr:         "127.0.0.1:" + port,
 		Handler:      appRouter,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,

@@ -11,13 +11,20 @@ import (
 )
 
 type Querier interface {
-	ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (ActivarSuscripcionRow, error)
+	ActivarSuscripcion(ctx context.Context, arg ActivarSuscripcionParams) (Suscripcione, error)
+	ActualizarActividadSesion(ctx context.Context, tokenID string) error
 	ActualizarContrasena(ctx context.Context, arg ActualizarContrasenaParams) error
-	CheckActiveSubscription(ctx context.Context, usuarioID pgtype.UUID) (bool, error)
-	// queries/usuarios.sql name: CrearUsuario :one
+	ActualizarTelefono(ctx context.Context, arg ActualizarTelefonoParams) error
+	CerrarSesion(ctx context.Context, tokenID string) error
+	ConsumirCodigoOAuth(ctx context.Context, arg ConsumirCodigoOAuthParams) (ConsumirCodigoOAuthRow, error)
+	ContarSesionesActivas(ctx context.Context, userID pgtype.UUID) (int64, error)
+	ContarTicketsNoLeidos(ctx context.Context) (int64, error)
+	CrearCodigoOAuth(ctx context.Context, arg CrearCodigoOAuthParams) error
+	CrearNoticia(ctx context.Context, arg CrearNoticiaParams) (Noticia, error)
 	CrearUsuario(ctx context.Context, arg CrearUsuarioParams) (CrearUsuarioRow, error)
 	EliminarExamenGuardado(ctx context.Context, arg EliminarExamenGuardadoParams) error
 	EliminarIntento(ctx context.Context, arg EliminarIntentoParams) error
+	EliminarSesionMasAntigua(ctx context.Context, userID pgtype.UUID) error
 	EsExamenGuardado(ctx context.Context, arg EsExamenGuardadoParams) (bool, error)
 	// Si la suscripción está vigente, suma meses al vencimiento actual.
 	// Si ya venció, suma meses a partir de hoy.
@@ -27,23 +34,34 @@ type Querier interface {
 	GetExamenByID(ctx context.Context, id pgtype.UUID) (GetExamenByIDRow, error)
 	GetExamenDetalleEntrenamiento(ctx context.Context, id pgtype.UUID) ([]GetExamenDetalleEntrenamientoRow, error)
 	GetOpcionesByPreguntaIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Opcione, error)
-	// Si ya existe, opcionalmente actualizamos su nombre si estaba vacío, o simplemente lo dejamos intacto
 	GetOrCreateUserByEmail(ctx context.Context, arg GetOrCreateUserByEmailParams) (GetOrCreateUserByEmailRow, error)
 	GetPreguntasByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetPreguntasByExamenIDRow, error)
 	GetRespuestasPorIntentoID(ctx context.Context, intentoID pgtype.UUID) ([]GetRespuestasPorIntentoIDRow, error)
-	GetSuscripcionActiva(ctx context.Context, usuarioID pgtype.UUID) (GetSuscripcionActivaRow, error)
 	GetTextosBaseByExamenID(ctx context.Context, examenID pgtype.UUID) ([]GetTextosBaseByExamenIDRow, error)
 	GetUsuarioByID(ctx context.Context, id pgtype.UUID) (GetUsuarioByIDRow, error)
 	GuardarCodigoRecuperacion(ctx context.Context, arg GuardarCodigoRecuperacionParams) (pgtype.UUID, error)
 	GuardarExamen(ctx context.Context, arg GuardarExamenParams) error
+	IncrementarVistasNoticia(ctx context.Context, slug string) error
 	//intentos.sql:
 	IniciarIntento(ctx context.Context, arg IniciarIntentoParams) (IniciarIntentoRow, error)
+	InvalidarCodigosPrevios(ctx context.Context, correo string) error
 	//examenes.sql
 	ListExamenesActivos(ctx context.Context) ([]ListExamenesActivosRow, error)
 	ListarExamenesGuardados(ctx context.Context, usuarioID pgtype.UUID) ([]ListarExamenesGuardadosRow, error)
 	ListarIntentosPorUsuario(ctx context.Context, usuarioID pgtype.UUID) ([]ListarIntentosPorUsuarioRow, error)
-	ListarUsuariosParaAdmin(ctx context.Context, dollar_1 pgtype.Text) ([]ListarUsuariosParaAdminRow, error)
+	ListarNoticias(ctx context.Context, arg ListarNoticiasParams) ([]ListarNoticiasRow, error)
+	// ============================================================================
+	// 2. NOTIFICACIONES Y ALERTAS PARA ADMINISTRACIÓN (/admin)
+	// ============================================================================
+	// Inteligente: Trae a TODOS los registrados recientemente (ej. últimas 48h o 7 días).
+	// Así ves a los recién llegados aunque YA les hayas activado el plan (como Dionisio).
+	ListarNuevosUsuarios(ctx context.Context, dias string) ([]ListarNuevosUsuariosRow, error)
+	ListarTicketsAdmin(ctx context.Context) ([]SoporteTicket, error)
+	ListarUsuariosExpirados(ctx context.Context) ([]ListarUsuariosExpiradosRow, error)
+	ListarUsuariosParaAdmin(ctx context.Context, dollar_1 string) ([]ListarUsuariosParaAdminRow, error)
+	ListarUsuariosPorVencer(ctx context.Context, dias string) ([]ListarUsuariosPorVencerRow, error)
 	MarcarCodigoComoUsado(ctx context.Context, id pgtype.UUID) error
+	MarcarComoLeido(ctx context.Context, id pgtype.UUID) error
 	ObtenerAnaliticaDetalladaPorComponente(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerAnaliticaDetalladaPorComponenteRow, error)
 	// Devuelve el rendimiento desglosado por subprueba (Comprensión, Razonamiento, etc.)
 	ObtenerAnaliticaPorIntento(ctx context.Context, intentoID pgtype.UUID) ([]ObtenerAnaliticaPorIntentoRow, error)
@@ -51,11 +69,21 @@ type Querier interface {
 	ObtenerIntentoPorID(ctx context.Context, arg ObtenerIntentoPorIDParams) (ObtenerIntentoPorIDRow, error)
 	// Busca un intento sin filtrar por usuario para diagnóstico de seguridad
 	ObtenerIntentoPorIDSimple(ctx context.Context, id pgtype.UUID) (ObtenerIntentoPorIDSimpleRow, error)
+	ObtenerNoticiaPorSlug(ctx context.Context, slug string) (Noticia, error)
 	// Para el gráfico de líneas (últimos 10 intentos)
 	ObtenerProgresoHistorico(ctx context.Context, usuarioID pgtype.UUID) ([]ObtenerProgresoHistoricoRow, error)
+	ObtenerResumenAdmin(ctx context.Context) (ObtenerResumenAdminRow, error)
+	ObtenerTokenSesionOAuth(ctx context.Context, arg ObtenerTokenSesionOAuthParams) (string, error)
 	ObtenerUsuarioPorCorreo(ctx context.Context, correo string) (Usuario, error)
 	RegistrarRespuestaIntento(ctx context.Context, arg RegistrarRespuestaIntentoParams) error
+	// sql/queries/suscripciones.sql
+	// ============================================================================
+	// 1. GESTIÓN DE SESIONES DE USUARIO (user_sessions)
+	// ============================================================================
+	RegistrarSesion(ctx context.Context, arg RegistrarSesionParams) (pgtype.UUID, error)
+	RegistrarTicket(ctx context.Context, arg RegistrarTicketParams) (SoporteTicket, error)
 	ValidarCodigoRecuperacion(ctx context.Context, arg ValidarCodigoRecuperacionParams) (PasswordReset, error)
+	ValidarSesionToken(ctx context.Context, arg ValidarSesionTokenParams) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)

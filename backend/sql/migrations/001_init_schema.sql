@@ -121,7 +121,7 @@ CREATE TABLE password_resets (
 );
 
 -- name: ObtenerAnaliticaPorIntento :many
-SELECT 
+SELECT
     COALESCE(NULLIF(p.subprueba, ''), 'General')::TEXT as subprueba,
     COUNT(ri.id)::BIGINT as total_preguntas,
     SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as correctas,
@@ -132,7 +132,7 @@ WHERE ri.intento_id = $1
 GROUP BY p.subprueba;
 
 -- name: ObtenerAnaliticaDetalladaPorComponente :many
-SELECT 
+SELECT
     COALESCE(NULLIF(p.componente, ''), 'General')::TEXT as componente,
     COUNT(ri.id)::BIGINT as total,
     SUM(CASE WHEN ri.es_correcta = true THEN 1 ELSE 0 END)::BIGINT as aciertos,
@@ -148,3 +148,44 @@ CREATE INDEX idx_password_resets_valido ON password_resets(correo, codigo) WHERE
 ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS subprueba VARCHAR(255) DEFAULT '';
 ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS componente VARCHAR(255) DEFAULT '';
 
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    token_id TEXT NOT NULL,
+    device_info TEXT,
+    ip_address VARCHAR(45),
+    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_token ON user_sessions(token_id);
+
+--
+CREATE TABLE noticias (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    titulo VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL, -- Ej: cronograma-nombramiento-docente-2026
+    resumen TEXT NOT NULL,              -- Para la card de la lista y meta description
+    contenido_html TEXT NOT NULL,       -- Aquí pegamos el contenido (soporta negritas, enlaces, etc)
+    categoria VARCHAR(100) NOT NULL,    -- Ej: Nombramiento, Ascenso
+    banner_filename VARCHAR(255) NOT NULL DEFAULT 'banner.png', -- Regla de R2
+
+    -- SEO Técnico
+    meta_title VARCHAR(255),
+    meta_description TEXT,
+    keywords VARCHAR(255),
+
+    -- Métricas y Auditoría
+    vistas INTEGER DEFAULT 0,
+    publicado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    actualizado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índices para búsqueda ultra rápida
+CREATE INDEX idx_noticias_slug ON noticias(slug);
+CREATE INDEX idx_noticias_publicado ON noticias(publicado_en DESC);
+
+-- backend/sql/migrations/004_add_telefono.sql
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefono VARCHAR(100);

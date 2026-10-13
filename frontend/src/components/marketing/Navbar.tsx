@@ -1,9 +1,9 @@
-//frontend > src > components > marketing > Navbar.tsx
+// frontend > src > components > marketing > Navbar.tsx
 
 "use client";
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Rocket, User, MessageCircle, GraduationCap, LayoutDashboard } from 'lucide-react';
+import { Rocket, User, MessageCircle, GraduationCap, LayoutDashboard, Sparkles } from 'lucide-react';
 
 export const Navbar = () => {
   const { user } = useAuth();
@@ -12,19 +12,35 @@ export const Navbar = () => {
     <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
-          
-          {/* LOGO */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <img src="https://docentesmart.vercel.app/favicon.svg" alt="DocenteSmart" className="w-9 h-9 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-black text-blue-900 tracking-tighter">Docente<span className="text-cyan-600">Smart</span></span>
+
+          {/* LOGO INTELIGENTE: Cambia el destino según el estado del usuario */}
+          <Link
+            href={user ? "/examenes" : "/"}
+            className="flex items-center gap-2 group"
+          >
+            <img
+              src="https://res.cloudinary.com/ubjx67e4/image/upload/v1789429302/logo-docente-smart-simulacro-examenes-docente-peru-minedu.png"
+              alt="DocenteSmart"
+              className="w-9 h-9 group-hover:rotate-12 transition-transform"
+            />
+            <span className="text-xl font-black text-blue-900 tracking-tighter">
+              Docente<span className="text-cyan-600">Smart</span>
+            </span>
           </Link>
 
           {/* LINKS CENTRALES (Solo visibles en Desktop) */}
           <div className="hidden md:flex items-center gap-8 text-sm font-bold text-slate-600">
-            <Link href="/" className="hover:text-blue-600 transition-colors flex items-center gap-1.5">
+            {/* Inicio: si está logueado, lleva a sus exámenes en vez de la landing */}
+            <Link
+              href={user ? "/" : "/"}
+              className="hover:text-blue-600 transition-colors flex items-center gap-1.5"
+            >
               Inicio
             </Link>
-            <Link href="https://chat.whatsapp.com/TU_LINK" target="_blank" className="hover:text-blue-600 transition-colors flex items-center gap-1.5">
+            <Link href="/noticias" className="hover:text-blue-600 transition-colors flex items-center gap-1.5">
+              <Sparkles size={16} className="text-cyan-500" /> Noticias
+            </Link>
+            <Link href="https://chat.whatsapp.com/BkkgDKJBkYcJSxMdUNkW0o" target="_blank" className="hover:text-blue-600 transition-colors flex items-center gap-1.5">
               <MessageCircle size={16} className="text-emerald-500" /> Comunidad
             </Link>
             <Link href="/aprendizaje" className="hover:text-blue-600 transition-colors flex items-center gap-1.5">

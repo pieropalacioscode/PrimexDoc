@@ -3,15 +3,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Usuario, AuthResponse } from '@/types';
 import { useRouter } from 'next/navigation';
+import { fetchAPI } from '@/services/api';
 
 interface AuthContextType {
   user: Usuario | null;
   token: string | null;
   isLoading: boolean;
-  loading: boolean; // Alias para evitar errores de compilación TS2339
   login: (authData: AuthResponse) => void;
   loginWithToken: (token: string) => Promise<boolean>;
   logout: () => void;
+  refreshUser: () => Promise<void>; // Actualiza datos del perfil contra el backend
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,107 +24,129 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   // ============================================================
-  // CERRAR SESIÓN
+  // CERRAR SESIÓN (Limpieza total y Hard Reset)
   // ============================================================
   const logout = useCallback(() => {
+    // 1. Limpieza de estado de React
     setToken(null);
     setUser(null);
-    
-    // Limpieza de almacenamiento local
+
+    // 2. Limpieza de persistencia
     localStorage.removeItem('primex_token');
     localStorage.removeItem('primex_user');
-    
-    // Eliminación de cookie para el Middleware de Next.js
+
+    // 3. Limpieza de cookie para el Middleware (parámetros exactos para forzar el borrado)
     document.cookie = 'primex_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    
-    router.push('/login');
-  }, [router]);
+
+    // 4. HARD RESET: Fuerza al navegador a descartar por completo el árbol de React
+    // y recargar la app desde cero, garantizando que el Middleware se ejecute contra
+    // un entorno 100% limpio.
+    window.location.href = '/';
+  }, []);
 
   // ============================================================
-  // CARGA INICIAL DE SESIÓN
+  // REFRESH USER (Validar sesión contra el Backend Go)
   // ============================================================
-  useEffect(() => {
-    const storedToken = localStorage.getItem('primex_token');
-    const storedUser = localStorage.getItem('primex_user');
-
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Error al restaurar sesión:", e);
-        logout();
-      }
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await fetchAPI<Usuario>('/me');
+      setUser(data);
+      localStorage.setItem('primex_user', JSON.stringify(data));
+    } catch (error) {
+      console.error('Sesión inválida en el servidor');
+      logout();
     }
-    setIsLoading(false);
   }, [logout]);
 
   // ============================================================
-  // LOGIN TRADICIONAL (CORREO / CONTRASEÑA)
+  // CARGA INICIAL (Hydration) — SIN REDIRECTS
+  // ============================================================
+  useEffect(() => {
+    const initAuth = () => {
+      const storedToken = localStorage.getItem('primex_token');
+      const storedUser = localStorage.getItem('primex_user');
+
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (e) {
+          // JSON corrupto: limpiamos sesión sin redirigir.
+          // El Middleware detectará la ausencia de cookie en la siguiente navegación.
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem('primex_token');
+          localStorage.removeItem('primex_user');
+          document.cookie = 'primex_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initAuth();
+  }, []);
+
+  // ============================================================
+  // LOGIN TRADICIONAL (Acción de usuario)
   // ============================================================
   const login = useCallback((authData: AuthResponse) => {
-    setToken(authData.token);
-    setUser(authData.usuario);
-    
-    localStorage.setItem('primex_token', authData.token);
-    localStorage.setItem('primex_user', JSON.stringify(authData.usuario));
-    
-    // Cookie activa por 7 días para el Middleware de Next.js
-    document.cookie = `primex_token=${authData.token}; path=/; max-age=604800; SameSite=Lax`;
-    
+    const { token, usuario } = authData;
+
+    setToken(token);
+    setUser(usuario);
+
+    localStorage.setItem('primex_token', token);
+    localStorage.setItem('primex_user', JSON.stringify(usuario));
+
+    // Cookie de 7 días. Vital para que Middleware.ts lea la sesión en el servidor.
+    document.cookie = `primex_token=${token}; path=/; max-age=604800; SameSite=Lax;`;
+
     router.push('/examenes');
   }, [router]);
 
   // ============================================================
-  // LOGIN OAUTH (GOOGLE)
+  // LOGIN OAUTH (Decodificación Segura)
   // ============================================================
   const loginWithToken = useCallback(async (newToken: string): Promise<boolean> => {
     try {
-      // Decodificar el Payload del JWT
       const base64Url = newToken.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
 
+      // BLINDAJE: Extraer el rol sin importar si viene de la DB o del JWT
       const parsedUser: Usuario = {
-        id: payload.user_id,
-        correo: payload.correo,
-        rol: payload.rol,
+        id: payload.user_id || payload.id,
+        correo: payload.correo || payload.email,
+        rol: payload.rol, // "admin" o "usuario"
         nombre_completo: payload.nombre_completo || 'Docente Primex',
       };
 
-      // Guardar estados
       setToken(newToken);
       setUser(parsedUser);
 
-      // Persistencia
       localStorage.setItem('primex_token', newToken);
       localStorage.setItem('primex_user', JSON.stringify(parsedUser));
-      document.cookie = `primex_token=${newToken}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `primex_token=${newToken}; path=/; max-age=604800; SameSite=Lax;`;
 
       return true;
     } catch (error) {
-      console.error("Error al procesar token de Google:", error);
+      console.error("Error decodificando token:", error);
       return false;
     }
   }, []);
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        token, 
-        isLoading, 
-        loading: isLoading, // Expuesto también como 'loading'
-        login, 
-        loginWithToken, 
-        logout 
-      }}
+    <AuthContext.Provider
+      value={{ user, token, isLoading, login, loginWithToken, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// ============================================================
+// HOOK DE CONSUMO (FUERA DEL PROVIDER)
+// ============================================================
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth debe ser usado dentro de un AuthProvider');
